@@ -1,4 +1,4 @@
-import { users, departments, tasks, taskComments, checklistItems, labels, taskLabels } from "@shared/schema";
+import { users, departments, tasks, taskComments, checklistItems, labels, taskLabels, appSettings } from "@shared/schema";
 import type {
   User,
   UserPublic,
@@ -14,6 +14,7 @@ import type {
   CommentWithAuthor,
   ChecklistItem,
   Label,
+  AppConfig,
 } from "@shared/schema";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import Database from "better-sqlite3";
@@ -89,6 +90,11 @@ export interface IStorage {
   createChecklistItem(taskId: number, text: string): Promise<ChecklistItem>;
   updateChecklistItem(id: number, data: { text?: string; done?: boolean }): Promise<ChecklistItem | undefined>;
   deleteChecklistItem(id: number): Promise<boolean>;
+
+  getConfig(): Promise<AppConfig>;
+  setConfig(patch: Partial<AppConfig>): Promise<AppConfig>;
+  archiveStaleCompleted(days: number): Promise<number>;
+  setArchived(id: number, archived: boolean): Promise<Task | undefined>;
 
   getLabels(): Promise<Label[]>;
   getLabel(id: number): Promise<Label | undefined>;
@@ -294,7 +300,71 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updateTask(id: number, task: UpdateTask): Promise<Task | undefined> {
-    return db.update(tasks).set(task).where(eq(tasks.id, id)).returning().get();
+    // Maintain completedAt as the task crosses in/out of the final column so
+    // autoarchival has a stable "done since" timestamp.
+    const patch: Record<string, unknown> = { ...task };
+    if (task.status !== undefined) {
+      const existing = await this.getTask(id);
+      if (task.status === "Завершено") {
+        if (!existing || existing.status !== "Завершено") patch.completedAt = Date.now();
+      } else {
+        patch.completedAt = null;
+      }
+    }
+    return db.update(tasks).set(patch).where(eq(tasks.id, id)).returning().get();
+  }
+
+  async setArchived(id: number, archived: boolean): Promise<Task | undefined> {
+    return db.update(tasks).set({ archived }).where(eq(tasks.id, id)).returning().get();
+  }
+
+  async archiveStaleCompleted(days: number): Promise<number> {
+    if (days <= 0) return 0;
+    const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
+    const rows = db.select().from(tasks).all();
+    let count = 0;
+    for (const t of rows) {
+      if (t.archived || t.status !== "Завершено" || t.completedAt === null) continue;
+      if (t.completedAt <= cutoff) {
+        db.update(tasks).set({ archived: true }).where(eq(tasks.id, t.id)).run();
+        count++;
+      }
+    }
+    return count;
+  }
+
+  async getConfig(): Promise<AppConfig> {
+    const rows = db.select().from(appSettings).all();
+    const map = new Map(rows.map((r) => [r.key, r.value]));
+    const parseNum = (v: string | undefined, fallback: number) => {
+      const n = v === undefined ? NaN : Number(v);
+      return Number.isFinite(n) ? n : fallback;
+    };
+    let wipLimits: Record<string, number | null> = {};
+    const rawWip = map.get("wipLimits");
+    if (rawWip) {
+      try {
+        wipLimits = JSON.parse(rawWip);
+      } catch {
+        wipLimits = {};
+      }
+    }
+    return {
+      archiveDays: parseNum(map.get("archiveDays"), 30),
+      wipLimits,
+    };
+  }
+
+  async setConfig(patch: Partial<AppConfig>): Promise<AppConfig> {
+    const write = (key: string, value: string) =>
+      db
+        .insert(appSettings)
+        .values({ key, value })
+        .onConflictDoUpdate({ target: appSettings.key, set: { value } })
+        .run();
+    if (patch.archiveDays !== undefined) write("archiveDays", String(patch.archiveDays));
+    if (patch.wipLimits !== undefined) write("wipLimits", JSON.stringify(patch.wipLimits));
+    return this.getConfig();
   }
 
   async deleteTask(id: number): Promise<boolean> {

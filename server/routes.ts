@@ -4,6 +4,7 @@ import type { Server } from "node:http";
 import { storage, hashPassword, verifyPassword, toPublicUser } from "./storage";
 import { seedDatabase, migrateLegacyPasswords, backfillDeadlineDates } from "./seed";
 import { createToken, destroyToken, requireAuth, requireAdmin, type SessionInfo } from "./auth";
+import { startCronJobs } from "./cron";
 import {
   insertTaskSchema,
   updateTaskSchema,
@@ -12,10 +13,30 @@ import {
   updateChecklistItemSchema,
   insertLabelSchema,
   updateLabelSchema,
+  updateConfigSchema,
   ROLES,
 } from "@shared/schema";
 import { parseIsoDate, formatRuDate } from "@shared/ru-date";
 import { z } from "zod";
+import ExcelJS from "exceljs";
+
+// Completed tasks whose completedAt falls in [from, to] (inclusive day
+// bounds). `to` is pushed to end-of-day so a same-day range still matches.
+async function completedInRange(fromIso?: string, toIso?: string) {
+  const from = fromIso ? parseIsoDate(fromIso)?.getTime() : undefined;
+  const toDate = toIso ? parseIsoDate(toIso) : undefined;
+  const to = toDate ? toDate.getTime() + 24 * 60 * 60 * 1000 - 1 : undefined;
+  const tasks = await storage.getTasks();
+  return tasks
+    .filter((t) => t.status === "Завершено" && t.completedAt !== null)
+    .filter((t) => (from === undefined || t.completedAt! >= from) && (to === undefined || t.completedAt! <= to))
+    .sort((a, b) => (a.completedAt ?? 0) - (b.completedAt ?? 0));
+}
+
+const reportRangeSchema = z.object({
+  from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+});
 
 /** Keep the human-facing `deadline` label in sync with the canonical
  * `deadlineDate` (ISO) whenever the picker supplies a date. */
@@ -71,6 +92,7 @@ export async function registerRoutes(
   await seedDatabase();
   migrateLegacyPasswords();
   backfillDeadlineDates();
+  startCronJobs();
 
   app.post("/api/login", async (req, res) => {
     const parsed = loginSchema.safeParse(req.body);
@@ -280,13 +302,17 @@ export async function registerRoutes(
   }
 
   // --- Tasks (scoped by department for non-admins) ---
+  // By default archived tasks are hidden; `?archived=1` returns only archived
+  // tasks (the Archive view), `?archived=all` returns everything.
   app.get("/api/tasks", requireAuth, async (req, res) => {
-    const tasks = await storage.getTasks();
-    if (req.session!.role === "admin") {
-      return res.json(tasks);
+    let tasks = await storage.getTasks();
+    const mode = req.query.archived;
+    if (mode === "1") tasks = tasks.filter((t) => t.archived);
+    else if (mode !== "all") tasks = tasks.filter((t) => !t.archived);
+    if (req.session!.role !== "admin") {
+      tasks = tasks.filter((t) => t.departmentId === req.session!.departmentId);
     }
-    const scoped = tasks.filter((t) => t.departmentId === req.session!.departmentId);
-    res.json(scoped);
+    res.json(tasks);
   });
 
   app.post("/api/tasks", requireAuth, async (req, res) => {
@@ -348,6 +374,86 @@ export async function registerRoutes(
       return res.status(404).json({ message: "Задача не найдена" });
     }
     res.status(204).end();
+  });
+
+  // Archive / restore a task (soft). Dept-scoped for members.
+  app.patch("/api/tasks/:id/archive", requireAuth, async (req, res) => {
+    const id = Number(req.params.id);
+    if (Number.isNaN(id)) return res.status(400).json({ message: "Некорректный id" });
+    const archived = req.body?.archived !== false;
+    const existing = await storage.getTask(id);
+    if (!existing) return res.status(404).json({ message: "Задача не найдена" });
+    if (req.session!.role !== "admin" && existing.departmentId !== req.session!.departmentId) {
+      return res.status(403).json({ message: "Можно менять только задачи своего отдела" });
+    }
+    const task = await storage.setArchived(id, archived);
+    res.json(task);
+  });
+
+  // --- App config (read for everyone, write admin-only) ---
+  app.get("/api/config", requireAuth, async (_req, res) => {
+    res.json(await storage.getConfig());
+  });
+
+  app.put("/api/config", requireAuth, requireAdmin, async (req, res) => {
+    const parsed = updateConfigSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: "Некорректные настройки" });
+    const config = await storage.setConfig(parsed.data);
+    res.json(config);
+  });
+
+  // --- Reports (admin only): completed tasks in a date range + Excel export ---
+  app.get("/api/reports/completed", requireAuth, requireAdmin, async (req, res) => {
+    const parsed = reportRangeSchema.safeParse(req.query);
+    if (!parsed.success) return res.status(400).json({ message: "Некорректный диапазон дат" });
+    const rows = await completedInRange(parsed.data.from, parsed.data.to);
+    res.json(
+      rows.map((t) => ({
+        id: t.id,
+        title: t.title,
+        goal: t.goal,
+        department: t.department?.name ?? "",
+        assignee: t.assignee?.username ?? null,
+        completedAt: t.completedAt,
+        deadline: t.deadline,
+      }))
+    );
+  });
+
+  app.get("/api/reports/completed.xlsx", requireAuth, requireAdmin, async (req, res) => {
+    const parsed = reportRangeSchema.safeParse(req.query);
+    if (!parsed.success) return res.status(400).json({ message: "Некорректный диапазон дат" });
+    const rows = await completedInRange(parsed.data.from, parsed.data.to);
+
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet("Завершённые задачи");
+    ws.columns = [
+      { header: "Задача", key: "title", width: 40 },
+      { header: "Цель", key: "goal", width: 40 },
+      { header: "Отдел", key: "department", width: 22 },
+      { header: "Ответственный", key: "assignee", width: 20 },
+      { header: "Дата завершения", key: "completed", width: 18 },
+      { header: "Дедлайн", key: "deadline", width: 18 },
+    ];
+    ws.getRow(1).font = { bold: true };
+    for (const t of rows) {
+      ws.addRow({
+        title: t.title,
+        goal: t.goal,
+        department: t.department?.name ?? "",
+        assignee: t.assignee?.username ?? "—",
+        completed: t.completedAt ? formatRuDate(new Date(t.completedAt)) : "—",
+        deadline: t.deadline,
+      });
+    }
+
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    );
+    res.setHeader("Content-Disposition", 'attachment; filename="completed-tasks.xlsx"');
+    await wb.xlsx.write(res);
+    res.end();
   });
 
   // --- Comments ---

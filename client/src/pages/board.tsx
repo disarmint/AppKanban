@@ -43,10 +43,13 @@ import {
   MessageSquare,
   ListChecks,
   Tag,
+  Archive,
+  AlertTriangle,
 } from "lucide-react";
+import { Link } from "wouter";
 import { STATUSES } from "@shared/schema";
 import { toIsoDate, daysOverdueFromIso, formatRuDate, parseIsoDate } from "@shared/ru-date";
-import type { Department, TaskWithDepartment, UserPublic, Label } from "@shared/schema";
+import type { Department, TaskWithDepartment, UserPublic, Label, AppConfig } from "@shared/schema";
 
 const STATUS_COLUMNS: { status: (typeof STATUSES)[number]; label: string }[] = [
   { status: "Запланировано", label: "Запланировано" },
@@ -86,6 +89,10 @@ export default function Board() {
 
   const { data: labels = [] } = useQuery<Label[]>({
     queryKey: ["/api/labels"],
+  });
+
+  const { data: config } = useQuery<AppConfig>({
+    queryKey: ["/api/config"],
   });
 
   const createMutation = useMutation({
@@ -236,6 +243,11 @@ export default function Board() {
           </div>
           <div className="flex items-center gap-1 sm:gap-2 shrink-0">
             {isAdmin && <AdminNav />}
+            <Link href="/archive">
+              <Button variant="ghost" size="icon" aria-label="Архив" data-testid="link-archive">
+                <Archive className="h-4 w-4" />
+              </Button>
+            </Link>
             <Button
               variant="ghost"
               size="icon"
@@ -367,6 +379,8 @@ export default function Board() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {STATUS_COLUMNS.map((col) => {
               const colTasks = filteredTasks.filter((t) => t.status === col.status);
+              const limit = config?.wipLimits?.[col.status] ?? null;
+              const overLimit = limit !== null && limit > 0 && colTasks.length > limit;
               return (
                 <div
                   key={col.status}
@@ -377,14 +391,29 @@ export default function Board() {
                   onDragLeave={() => setDragOverStatus(null)}
                   onDrop={(e) => handleDrop(col.status, e)}
                   className={`rounded-lg border bg-muted/40 p-3 flex flex-col gap-3 min-h-[200px] transition-colors ${
-                    dragOverStatus === col.status ? "ring-2 ring-primary" : ""
+                    dragOverStatus === col.status
+                      ? "ring-2 ring-primary"
+                      : overLimit
+                        ? "ring-2 ring-destructive"
+                        : ""
                   }`}
                   data-testid={`column-${col.status}`}
                 >
                   <div className="flex items-center justify-between px-1">
-                    <h2 className="text-sm font-semibold">{col.label}</h2>
-                    <Badge variant="secondary" data-testid={`count-${col.status}`}>
-                      {colTasks.length}
+                    <h2 className="text-sm font-semibold flex items-center gap-1.5">
+                      {col.label}
+                      {overLimit && (
+                        <AlertTriangle
+                          className="h-3.5 w-3.5 text-destructive"
+                          data-testid={`wip-warning-${col.status}`}
+                        />
+                      )}
+                    </h2>
+                    <Badge
+                      variant={overLimit ? "destructive" : "secondary"}
+                      data-testid={`count-${col.status}`}
+                    >
+                      {limit !== null && limit > 0 ? `${colTasks.length}/${limit}` : colTasks.length}
                     </Badge>
                   </div>
                   <div className="flex flex-col gap-2 max-h-[65vh] overflow-y-auto pr-0.5">

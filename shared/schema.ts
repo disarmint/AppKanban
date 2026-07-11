@@ -65,10 +65,16 @@ export const tasks = sqliteTable("tasks", {
   deadlineDate: text("deadline_date"),
   assigneeId: integer("assignee_id").references(() => users.id),
   status: text("status").notNull().default("Запланировано"),
+  // Epoch ms when the task most recently entered the final ("Завершено")
+  // column. Drives autoarchival. Null while the task is not completed.
+  completedAt: integer("completed_at"),
+  // Soft archive flag: archived tasks are hidden from the main board but kept
+  // in the database and shown in the dedicated Archive view.
+  archived: integer("archived", { mode: "boolean" }).notNull().default(false),
 });
 
 export const insertTaskSchema = createInsertSchema(tasks)
-  .omit({ id: true })
+  .omit({ id: true, completedAt: true, archived: true })
   .extend({
     status: z.enum(STATUSES).default("Запланировано"),
     deadlineDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Неверная дата").nullable().optional(),
@@ -166,3 +172,25 @@ export const updateLabelSchema = insertLabelSchema.partial().refine(
 );
 
 export type Label = typeof labels.$inferSelect;
+
+// Simple key/value store for app-wide admin settings (autoarchive threshold,
+// per-column WIP limits). Values are JSON-encoded strings.
+export const appSettings = sqliteTable("app_settings", {
+  key: text("key").primaryKey(),
+  value: text("value").notNull(),
+});
+
+export type AppSetting = typeof appSettings.$inferSelect;
+
+// Typed view of the settings the UI cares about. `archiveDays <= 0` disables
+// autoarchival; wipLimits maps a status label to a max task count (null/absent
+// = no limit).
+export type AppConfig = {
+  archiveDays: number;
+  wipLimits: Record<string, number | null>;
+};
+
+export const updateConfigSchema = z.object({
+  archiveDays: z.number().int().min(0).max(3650).optional(),
+  wipLimits: z.record(z.string(), z.number().int().min(0).nullable()).optional(),
+});

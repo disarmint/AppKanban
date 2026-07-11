@@ -13,6 +13,9 @@ import Board from "@/pages/board";
 import Users from "@/pages/users";
 import Departments from "@/pages/departments";
 import Analytics from "@/pages/analytics";
+import Archive from "@/pages/archive";
+import Settings from "@/pages/settings";
+import Reports from "@/pages/reports";
 
 function ProtectedRoute({ component: Component }: { component: () => JSX.Element }) {
   const { isAuthenticated } = useAuth();
@@ -40,8 +43,17 @@ function AppRouter() {
       <Route path="/">
         <ProtectedRoute component={Board} />
       </Route>
+      <Route path="/archive">
+        <ProtectedRoute component={Archive} />
+      </Route>
       <Route path="/users">
         <AdminRoute component={Users} />
+      </Route>
+      <Route path="/settings">
+        <AdminRoute component={Settings} />
+      </Route>
+      <Route path="/reports">
+        <AdminRoute component={Reports} />
       </Route>
       <Route path="/departments">
         <AdminRoute component={Departments} />
