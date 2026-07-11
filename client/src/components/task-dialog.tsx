@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -40,20 +40,35 @@ import { STATUSES, PRIORITIES } from "@shared/schema";
 import { formatRuDate, parseIsoDate } from "@shared/ru-date";
 import type { Department, TaskWithDepartment, UserPublic, Priority } from "@shared/schema";
 
+const UNASSIGNED = "none";
+
 const taskFormSchema = z.object({
   departmentId: z.string().min(1, "Выберите отдел"),
   title: z.string().min(1, "Введите задачу"),
   goal: z.string().min(1, "Введите цель"),
   week: z.string().min(1, "Введите неделю"),
-  deadlineDate: z.date({ required_error: "Выберите дедлайн" }),
+  deadlineDate: z.date({ required_error: "Укажите срок" }),
   assigneeId: z.string(),
   status: z.string().min(1),
   priority: z.enum(PRIORITIES),
 });
 
-const UNASSIGNED = "none";
-
 export type TaskFormValues = z.infer<typeof taskFormSchema>;
+
+// On task CREATE, assignee and deadline are mandatory (Block B). On edit we keep
+// the looser rules so pre-existing tasks (some without an assignee) stay
+// editable.
+function makeTaskSchema(isCreate: boolean) {
+  return taskFormSchema.superRefine((val, ctx) => {
+    if (isCreate && (!val.assigneeId || val.assigneeId === UNASSIGNED)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["assigneeId"],
+        message: "Выберите ответственного",
+      });
+    }
+  });
+}
 
 const STATUS_OPTIONS = STATUSES;
 
@@ -76,8 +91,10 @@ export function TaskDialog({
   onSubmit: (values: TaskFormValues) => void;
   isSubmitting: boolean;
 }) {
+  const isCreate = !task;
+  const resolver = useMemo(() => zodResolver(makeTaskSchema(isCreate)), [isCreate]);
   const form = useForm<TaskFormValues>({
-    resolver: zodResolver(taskFormSchema),
+    resolver,
     defaultValues: {
       departmentId: "",
       title: "",
@@ -111,7 +128,7 @@ export function TaskDialog({
               goal: "",
               week: "",
               deadlineDate: undefined,
-              assigneeId: UNASSIGNED,
+              assigneeId: "",
               status: "Запланировано",
               priority: "Средний",
             }
@@ -240,11 +257,11 @@ export function TaskDialog({
                   <Select onValueChange={field.onChange} value={field.value}>
                     <FormControl>
                       <SelectTrigger data-testid="select-assignee">
-                        <SelectValue />
+                        <SelectValue placeholder="Выберите ответственного" />
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      <SelectItem value={UNASSIGNED}>Не назначен</SelectItem>
+                      {!isCreate && <SelectItem value={UNASSIGNED}>Не назначен</SelectItem>}
                       {assignableUsers.map((u) => (
                         <SelectItem key={u.id} value={String(u.id)}>
                           {u.username}

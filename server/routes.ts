@@ -349,6 +349,14 @@ export async function registerRoutes(
         return res.status(403).json({ message: "Можно создавать задачи только в своём отделе" });
       }
     }
+    // Block B: assignee + deadline are mandatory for tasks created via the UI.
+    // Enforced primarily in the client form; this is a server-side backstop.
+    if (parsed.data.assigneeId === null || parsed.data.assigneeId === undefined) {
+      return res.status(400).json({ message: "Выберите ответственного" });
+    }
+    if (!parsed.data.deadlineDate) {
+      return res.status(400).json({ message: "Укажите срок" });
+    }
     const assigneeError = await checkAssignee(parsed.data.assigneeId, req.session!);
     if (assigneeError) return res.status(400).json({ message: assigneeError });
     const task = await storage.createTask(syncDeadline(parsed.data));
