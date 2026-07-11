@@ -1,0 +1,29 @@
+{
+  "name": "AppKanban — среда разработки",
+  "image": "mcr.microsoft.com/devcontainers/javascript-node:1-20-bookworm",
+
+  // Устанавливаем зависимости сразу после создания среды
+  "postCreateCommand": "npm install",
+
+  // Приложение слушает порт 5000 (backend + frontend на одном порту)
+  "forwardPorts": [5000],
+  "portsAttributes": {
+    "5000": {
+      "label": "AppKanban",
+      "onAutoForward": "openPreview"
+    }
+  },
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode",
+        "bradlc.vscode-tailwindcss"
+      ]
+    }
+  },
+
+  // Через npm run dev поднимается сервер разработки на порту 5000
+  "remoteUser": "node"
+}
