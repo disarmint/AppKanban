@@ -87,6 +87,10 @@ export async function seedDatabase() {
           deadline: t.deadline,
           deadlineDate: parsed ? toIsoDate(parsed) : null,
           status: t.status,
+          // Seed data may create tasks already in the final column; give them a
+          // completedAt so Reports/auto-archive treat them the same as tasks
+          // that transitioned through the normal update path.
+          completedAt: t.status === "Завершено" ? (parsed ? parsed.getTime() : Date.now()) : null,
         })
         .run();
     }
