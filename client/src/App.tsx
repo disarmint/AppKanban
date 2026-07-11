@@ -6,6 +6,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, useAuth } from "@/lib/auth-context";
 import { ThemeProvider } from "@/lib/theme-provider";
+import { ChangePasswordDialog } from "@/components/change-password-dialog";
 import NotFound from "@/pages/not-found";
 import Login from "@/pages/login";
 import Board from "@/pages/board";
@@ -27,7 +28,10 @@ function AdminRoute({ component: Component }: { component: () => JSX.Element }) 
 }
 
 function AppRouter() {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, user } = useAuth();
+  if (isAuthenticated && user?.mustChangePassword) {
+    return <ChangePasswordDialog />;
+  }
   return (
     <Switch>
       <Route path="/login">

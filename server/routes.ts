@@ -1,8 +1,8 @@
 import type { Express } from "express";
 import { createServer } from "node:http";
 import type { Server } from "node:http";
-import { storage, hashPassword, toPublicUser } from "./storage";
-import { seedDatabase } from "./seed";
+import { storage, hashPassword, verifyPassword, toPublicUser } from "./storage";
+import { seedDatabase, migrateLegacyPasswords } from "./seed";
 import { createToken, destroyToken, requireAuth, requireAdmin } from "./auth";
 import { insertTaskSchema, updateTaskSchema, ROLES } from "@shared/schema";
 import { z } from "zod";
@@ -10,6 +10,10 @@ import { z } from "zod";
 const loginSchema = z.object({
   username: z.string().min(1),
   password: z.string().min(1),
+});
+
+const changePasswordSchema = z.object({
+  newPassword: z.string().min(4, "Пароль минимум 4 символа"),
 });
 
 const createUserSchema = z.object({
@@ -45,6 +49,7 @@ export async function registerRoutes(
   app: Express
 ): Promise<Server> {
   await seedDatabase();
+  migrateLegacyPasswords();
 
   app.post("/api/login", async (req, res) => {
     const parsed = loginSchema.safeParse(req.body);
@@ -53,7 +58,7 @@ export async function registerRoutes(
     }
     const { username, password } = parsed.data;
     const user = await storage.getUserByUsername(username);
-    if (!user || user.passwordHash !== hashPassword(password)) {
+    if (!user || !verifyPassword(password, user.passwordHash)) {
       return res.status(401).json({ message: "Неверный логин или пароль" });
     }
     const token = createToken({
@@ -74,6 +79,19 @@ export async function registerRoutes(
 
   app.get("/api/me", requireAuth, async (req, res) => {
     const user = await storage.getUser(req.session!.userId);
+    if (!user) return res.status(404).json({ message: "Пользователь не найден" });
+    res.json(toPublicUser(user));
+  });
+
+  app.post("/api/change-password", requireAuth, async (req, res) => {
+    const parsed = changePasswordSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ message: "Пароль минимум 4 символа" });
+    }
+    const user = await storage.updateUser(req.session!.userId, {
+      passwordHash: hashPassword(parsed.data.newPassword),
+      mustChangePassword: false,
+    });
     if (!user) return res.status(404).json({ message: "Пользователь не найден" });
     res.json(toPublicUser(user));
   });

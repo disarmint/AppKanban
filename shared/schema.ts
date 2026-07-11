@@ -11,6 +11,9 @@ export const users = sqliteTable("users", {
   passwordHash: text("password_hash").notNull(),
   role: text("role").notNull().default("member"),
   departmentId: integer("department_id"),
+  mustChangePassword: integer("must_change_password", { mode: "boolean" })
+    .notNull()
+    .default(false),
 });
 
 export const insertUserSchema = createInsertSchema(users).pick({
@@ -18,6 +21,7 @@ export const insertUserSchema = createInsertSchema(users).pick({
   passwordHash: true,
   role: true,
   departmentId: true,
+  mustChangePassword: true,
 });
 
 export type InsertUser = z.infer<typeof insertUserSchema>;

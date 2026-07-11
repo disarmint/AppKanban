@@ -6,6 +6,7 @@ type AuthUser = {
   username: string;
   role: "admin" | "member";
   departmentId: number | null;
+  mustChangePassword: boolean;
 };
 
 type AuthContextValue = {
@@ -13,6 +14,7 @@ type AuthContextValue = {
   isAuthenticated: boolean;
   login: (username: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
+  changePassword: (newPassword: string) => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -38,8 +40,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     queryClient.clear();
   }, []);
 
+  const changePassword = useCallback(async (newPassword: string) => {
+    const res = await apiRequest("POST", "/api/change-password", { newPassword });
+    const data = await res.json();
+    setUser(data);
+  }, []);
+
   return (
-    <AuthContext.Provider value={{ user, isAuthenticated: !!user, login, logout }}>
+    <AuthContext.Provider
+      value={{ user, isAuthenticated: !!user, login, logout, changePassword }}
+    >
       {children}
     </AuthContext.Provider>
   );

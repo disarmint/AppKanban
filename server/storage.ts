@@ -27,7 +27,8 @@ sqlite.exec(`
     username TEXT NOT NULL UNIQUE,
     password_hash TEXT NOT NULL,
     role TEXT NOT NULL DEFAULT 'member',
-    department_id INTEGER
+    department_id INTEGER,
+    must_change_password INTEGER NOT NULL DEFAULT 0
   );
   CREATE TABLE IF NOT EXISTS departments (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -58,10 +59,30 @@ if (!userColumnNames.has("role")) {
 if (!userColumnNames.has("department_id")) {
   sqlite.exec("ALTER TABLE users ADD COLUMN department_id INTEGER");
 }
+if (!userColumnNames.has("must_change_password")) {
+  sqlite.exec("ALTER TABLE users ADD COLUMN must_change_password INTEGER NOT NULL DEFAULT 0");
+}
 
+// Password hashing: scrypt with a per-user random salt.
+// Stored format: "scrypt$<saltHex>$<hashHex>". Legacy hashes (bare sha256 hex,
+// 64 chars, no "$") are detected by isLegacyHash and migrated on startup.
 export function hashPassword(password: string): string {
-  const salt = "kanban-app-static-salt";
-  return crypto.createHash("sha256").update(salt + password).digest("hex");
+  const salt = crypto.randomBytes(16);
+  const derived = crypto.scryptSync(password, salt, 64);
+  return `scrypt$${salt.toString("hex")}$${derived.toString("hex")}`;
+}
+
+export function verifyPassword(password: string, stored: string): boolean {
+  const parts = stored.split("$");
+  if (parts.length !== 3 || parts[0] !== "scrypt") return false;
+  const salt = Buffer.from(parts[1], "hex");
+  const expected = Buffer.from(parts[2], "hex");
+  const derived = crypto.scryptSync(password, salt, expected.length);
+  return expected.length === derived.length && crypto.timingSafeEqual(expected, derived);
+}
+
+export function isLegacyHash(stored: string): boolean {
+  return !stored.startsWith("scrypt$");
 }
 
 export function toPublicUser(user: User): UserPublic {

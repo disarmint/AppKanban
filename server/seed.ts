@@ -1,9 +1,36 @@
-import { db, hashPassword } from "./storage";
+import { eq } from "drizzle-orm";
+import { db, hashPassword, isLegacyHash } from "./storage";
 import { users, departments, tasks } from "@shared/schema";
 import seedData from "./seed-data.json";
 
 const DEFAULT_USERNAME = "admin";
 const DEFAULT_PASSWORD = "kanban2026";
+
+/** One-time migration of legacy (sha256) password hashes to scrypt.
+ * Legacy passwords cannot be recovered, so each affected user gets a
+ * temporary password "<login>2026!" and is forced to change it on next login.
+ * Returns the list of resets so the business owner can be informed. */
+export function migrateLegacyPasswords(): { username: string; tempPassword: string }[] {
+  const resets: { username: string; tempPassword: string }[] = [];
+  const all = db.select().from(users).all();
+  for (const u of all) {
+    if (isLegacyHash(u.passwordHash)) {
+      const tempPassword = `${u.username}2026!`;
+      db.update(users)
+        .set({ passwordHash: hashPassword(tempPassword), mustChangePassword: true })
+        .where(eq(users.id, u.id))
+        .run();
+      resets.push({ username: u.username, tempPassword });
+    }
+  }
+  if (resets.length > 0) {
+    console.log(
+      `[migrate] reset ${resets.length} legacy password(s): ` +
+        resets.map((r) => `${r.username} -> ${r.tempPassword}`).join(", ")
+    );
+  }
+  return resets;
+}
 
 export async function seedDatabase() {
   const existingUsers = db.select().from(users).all();
