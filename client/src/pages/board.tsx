@@ -81,13 +81,15 @@ const STATUS_COLUMNS: { status: (typeof STATUSES)[number]; label: string }[] = [
   { status: "Завершено", label: "Завершено" },
 ];
 
-// Priority pill/chip colors. Низкий=grey, Средний=blue, Высокий=orange,
-// Критический=red.
+// Priority pill/chip colors mapped to the Claude palette, ascending severity:
+// Низкий=moss (green), Средний=windstorm (blue), Высокий=peachy (terracotta),
+// Критический=deep brick terracotta (warm, clearly the most alarming — not a
+// foreign bright red). Pill label uses the mono accent font.
 const PRIORITY_META: Record<Priority, { dot: string; className: string }> = {
-  Низкий: { dot: "#6b7280", className: "bg-muted text-muted-foreground" },
-  Средний: { dot: "#3b82f6", className: "bg-blue-500/15 text-blue-600 dark:text-blue-400" },
-  Высокий: { dot: "#f97316", className: "bg-orange-500/15 text-orange-600 dark:text-orange-400" },
-  Критический: { dot: "#ef4444", className: "bg-destructive/15 text-destructive" },
+  Низкий: { dot: "#788c5d", className: "bg-[#788c5d]/15 text-[#5c6f45] dark:text-[#a3b585]" },
+  Средний: { dot: "#6a9bcc", className: "bg-[#6a9bcc]/15 text-[#3f6d9e] dark:text-[#93bbdf]" },
+  Высокий: { dot: "#d97757", className: "bg-[#d97757]/15 text-[#b3532f] dark:text-[#e59a7d]" },
+  Критический: { dot: "#a83a24", className: "bg-[#a83a24]/20 text-[#a83a24] dark:text-[#e08a72]" },
 };
 
 export default function Board() {
@@ -336,7 +338,7 @@ export default function Board() {
                   style={{ backgroundColor: d.color }}
                 />
                 <div className="leading-tight">
-                  <p className="text-xs font-medium whitespace-nowrap">{d.name}</p>
+                  <p className="text-xs font-medium font-mono whitespace-nowrap">{d.name}</p>
                   <p className="text-[11px] text-muted-foreground whitespace-nowrap">
                     {d.roadmapPeriod} · {d.roadmapStatus}
                   </p>
@@ -375,7 +377,7 @@ export default function Board() {
                     key={d.id}
                     onClick={() => toggleDepartment(d.id)}
                     data-testid={`chip-department-${d.id}`}
-                    className={`toggle-elevate shrink-0 rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
+                    className={`toggle-elevate shrink-0 rounded-full border px-3 py-1 text-xs font-medium font-mono transition-colors ${
                       active ? "toggle-elevated" : ""
                     }`}
                     style={{
@@ -426,7 +428,7 @@ export default function Board() {
                 key={p}
                 onClick={() => togglePriority(p)}
                 data-testid={`chip-priority-${p}`}
-                className={`toggle-elevate shrink-0 inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
+                className={`toggle-elevate shrink-0 inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium font-mono transition-colors ${
                   active ? "toggle-elevated" : ""
                 }`}
                 style={{ borderColor: active ? meta.dot : "var(--border)", color: active ? meta.dot : undefined }}
@@ -623,7 +625,7 @@ function DeadlineBadge({ task }: { task: TaskWithDepartment }) {
 
   return (
     <span
-      className={`inline-flex items-center rounded-md px-1.5 py-0 text-[10px] font-medium ${tone}`}
+      className={`inline-flex items-center rounded-md px-1.5 py-0 text-[10px] font-medium font-mono ${tone}`}
       data-testid={`deadline-${task.id}`}
     >
       {label}
@@ -744,14 +746,14 @@ function TaskCardView({
         <div className="flex items-center gap-1 min-w-0">
           <Badge
             variant="outline"
-            className="text-[10px] px-1.5 py-0"
+            className="text-[10px] px-1.5 py-0 font-mono"
             style={{ borderColor: task.department?.color, color: task.department?.color }}
             data-testid={`badge-department-${task.id}`}
           >
             {task.department?.name}
           </Badge>
           <span
-            className={`inline-flex items-center gap-1 rounded-md px-1.5 py-0 text-[10px] font-medium ${PRIORITY_META[task.priority as Priority]?.className ?? ""}`}
+            className={`inline-flex items-center gap-1 rounded-md px-1.5 py-0 text-[10px] font-medium font-mono ${PRIORITY_META[task.priority as Priority]?.className ?? ""}`}
             data-testid={`badge-priority-${task.id}`}
             title={`Приоритет: ${task.priority}`}
           >
@@ -858,7 +860,7 @@ function TaskCardView({
       )}
       <div className="flex items-center justify-between mt-3 gap-2">
         <div className="flex flex-wrap gap-1">
-          <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+          <Badge variant="secondary" className="text-[10px] px-1.5 py-0 font-mono">
             {task.week}
           </Badge>
           <DeadlineBadge task={task} />

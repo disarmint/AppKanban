@@ -26,10 +26,10 @@ import { toIsoDate, formatRuDate, parseIsoDate, daysOverdueFromIso } from "@shar
 import type { Department, TaskWithDepartment, UserPublic, Priority } from "@shared/schema";
 
 const PRIORITY_META: Record<Priority, { dot: string; className: string }> = {
-  Низкий: { dot: "#6b7280", className: "bg-muted text-muted-foreground" },
-  Средний: { dot: "#3b82f6", className: "bg-blue-500/15 text-blue-600 dark:text-blue-400" },
-  Высокий: { dot: "#f97316", className: "bg-orange-500/15 text-orange-600 dark:text-orange-400" },
-  Критический: { dot: "#ef4444", className: "bg-destructive/15 text-destructive" },
+  Низкий: { dot: "#788c5d", className: "bg-[#788c5d]/15 text-[#5c6f45] dark:text-[#a3b585]" },
+  Средний: { dot: "#6a9bcc", className: "bg-[#6a9bcc]/15 text-[#3f6d9e] dark:text-[#93bbdf]" },
+  Высокий: { dot: "#d97757", className: "bg-[#d97757]/15 text-[#b3532f] dark:text-[#e59a7d]" },
+  Критический: { dot: "#a83a24", className: "bg-[#a83a24]/20 text-[#a83a24] dark:text-[#e08a72]" },
 };
 
 export default function TaskPage() {
@@ -173,13 +173,14 @@ export default function TaskPage() {
                 <div className="flex flex-wrap items-center gap-2">
                   <Badge
                     variant="outline"
+                    className="font-mono"
                     style={{ borderColor: task.department?.color, color: task.department?.color }}
                     data-testid="badge-task-department"
                   >
                     {task.department?.name}
                   </Badge>
                   <span
-                    className={`inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium ${PRIORITY_META[task.priority as Priority]?.className ?? ""}`}
+                    className={`inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium font-mono ${PRIORITY_META[task.priority as Priority]?.className ?? ""}`}
                     data-testid="badge-task-priority"
                   >
                     <span
