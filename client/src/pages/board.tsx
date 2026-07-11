@@ -61,7 +61,14 @@ import {
   Archive,
   AlertTriangle,
   Paperclip,
+  Clock,
 } from "lucide-react";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { Link } from "wouter";
 import { STATUSES } from "@shared/schema";
 import { toIsoDate, daysOverdueFromIso, formatRuDate, parseIsoDate } from "@shared/ru-date";
@@ -448,6 +455,7 @@ export default function Board() {
                         <TaskCard
                           key={task.id}
                           task={task}
+                          staleDays={config?.staleDays ?? 0}
                           onEdit={() => openEdit(task)}
                           onDelete={() => setDeleteTarget(task)}
                           onComments={() => setCommentsTask(task)}
@@ -466,7 +474,7 @@ export default function Board() {
             </div>
             <DragOverlay>
               {activeDragTask ? (
-                <TaskCardView task={activeDragTask} {...NOOP_HANDLERS} />
+                <TaskCardView task={activeDragTask} staleDays={0} {...NOOP_HANDLERS} />
               ) : null}
             </DragOverlay>
           </DndContext>
@@ -634,7 +642,7 @@ const NOOP_HANDLERS: TaskCardHandlers = {
   onStatusChange: () => {},
 };
 
-function TaskCard(props: { task: TaskWithDepartment } & TaskCardHandlers) {
+function TaskCard(props: { task: TaskWithDepartment; staleDays: number } & TaskCardHandlers) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: props.task.id,
   });
@@ -650,6 +658,7 @@ function TaskCard(props: { task: TaskWithDepartment } & TaskCardHandlers) {
 
 function TaskCardView({
   task,
+  staleDays,
   onEdit,
   onDelete,
   onComments,
@@ -662,6 +671,7 @@ function TaskCardView({
   isDragging,
 }: {
   task: TaskWithDepartment;
+  staleDays: number;
   dragRef?: (el: HTMLElement | null) => void;
   dragProps?: Record<string, unknown>;
   isDragging?: boolean;
@@ -669,6 +679,13 @@ function TaskCardView({
   // Interactive controls stop pointer propagation so tapping them never starts
   // a drag — the status dropdown stays a keyboard/click-accessible alternative.
   const stop = { onPointerDown: (e: React.PointerEvent) => e.stopPropagation() };
+  // A non-final task whose status hasn't moved in longer than the configured
+  // threshold is flagged as "stale".
+  const staleFor =
+    staleDays > 0 && task.status !== "Завершено" && !task.archived && task.statusChangedAt
+      ? Math.floor((Date.now() - task.statusChangedAt) / 86_400_000)
+      : 0;
+  const isStale = staleDays > 0 && staleFor > staleDays;
   return (
     <Card
       ref={dragRef}
@@ -680,14 +697,32 @@ function TaskCardView({
       data-testid={`card-task-${task.id}`}
     >
       <div className="flex items-start justify-between gap-2">
-        <Badge
-          variant="outline"
-          className="text-[10px] px-1.5 py-0"
-          style={{ borderColor: task.department?.color, color: task.department?.color }}
-          data-testid={`badge-department-${task.id}`}
-        >
-          {task.department?.name}
-        </Badge>
+        <div className="flex items-center gap-1 min-w-0">
+          <Badge
+            variant="outline"
+            className="text-[10px] px-1.5 py-0"
+            style={{ borderColor: task.department?.color, color: task.department?.color }}
+            data-testid={`badge-department-${task.id}`}
+          >
+            {task.department?.name}
+          </Badge>
+          {isStale && (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span
+                    {...stop}
+                    className="inline-flex items-center text-amber-600 dark:text-amber-400"
+                    data-testid={`stale-indicator-${task.id}`}
+                  >
+                    <Clock className="h-3.5 w-3.5" />
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent>Не менялась {staleFor} дн.</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
+        </div>
         <div className="flex items-center gap-0.5" {...stop}>
           <button
             onClick={onComments}

@@ -68,13 +68,17 @@ export const tasks = sqliteTable("tasks", {
   // Epoch ms when the task most recently entered the final ("Завершено")
   // column. Drives autoarchival. Null while the task is not completed.
   completedAt: integer("completed_at"),
+  // Epoch ms when the task's status last changed (also set on creation). Drives
+  // the "stale" indicator for tasks that have sat in a non-final column too
+  // long. Not null once migrated (see 0009 migration for the backfill note).
+  statusChangedAt: integer("status_changed_at"),
   // Soft archive flag: archived tasks are hidden from the main board but kept
   // in the database and shown in the dedicated Archive view.
   archived: integer("archived", { mode: "boolean" }).notNull().default(false),
 });
 
 export const insertTaskSchema = createInsertSchema(tasks)
-  .omit({ id: true, completedAt: true, archived: true })
+  .omit({ id: true, completedAt: true, archived: true, statusChangedAt: true })
   .extend({
     status: z.enum(STATUSES).default("Запланировано"),
     deadlineDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Неверная дата").nullable().optional(),
@@ -228,10 +232,12 @@ export type AppSetting = typeof appSettings.$inferSelect;
 // = no limit).
 export type AppConfig = {
   archiveDays: number;
+  staleDays: number;
   wipLimits: Record<string, number | null>;
 };
 
 export const updateConfigSchema = z.object({
   archiveDays: z.number().int().min(0).max(3650).optional(),
+  staleDays: z.number().int().min(0).max(3650).optional(),
   wipLimits: z.record(z.string(), z.number().int().min(0).nullable()).optional(),
 });

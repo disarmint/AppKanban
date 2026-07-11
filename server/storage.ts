@@ -329,7 +329,11 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createTask(task: InsertTask): Promise<Task> {
-    return db.insert(tasks).values(task).returning().get();
+    return db
+      .insert(tasks)
+      .values({ ...task, statusChangedAt: Date.now() })
+      .returning()
+      .get();
   }
 
   async updateTask(id: number, task: UpdateTask): Promise<Task | undefined> {
@@ -338,6 +342,7 @@ export class DatabaseStorage implements IStorage {
     const patch: Record<string, unknown> = { ...task };
     if (task.status !== undefined) {
       const existing = await this.getTask(id);
+      if (!existing || existing.status !== task.status) patch.statusChangedAt = Date.now();
       if (task.status === "Завершено") {
         if (!existing || existing.status !== "Завершено") patch.completedAt = Date.now();
       } else {
@@ -384,6 +389,7 @@ export class DatabaseStorage implements IStorage {
     }
     return {
       archiveDays: parseNum(map.get("archiveDays"), 30),
+      staleDays: parseNum(map.get("staleDays"), 14),
       wipLimits,
     };
   }
@@ -396,6 +402,7 @@ export class DatabaseStorage implements IStorage {
         .onConflictDoUpdate({ target: appSettings.key, set: { value } })
         .run();
     if (patch.archiveDays !== undefined) write("archiveDays", String(patch.archiveDays));
+    if (patch.staleDays !== undefined) write("staleDays", String(patch.staleDays));
     if (patch.wipLimits !== undefined) write("wipLimits", JSON.stringify(patch.wipLimits));
     return this.getConfig();
   }

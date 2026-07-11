@@ -18,11 +18,13 @@ export default function Settings() {
   const { data: config, isLoading } = useQuery<AppConfig>({ queryKey: ["/api/config"] });
 
   const [archiveDays, setArchiveDays] = useState("30");
+  const [staleDays, setStaleDays] = useState("14");
   const [wip, setWip] = useState<Record<string, string>>({});
 
   useEffect(() => {
     if (!config) return;
     setArchiveDays(String(config.archiveDays));
+    setStaleDays(String(config.staleDays));
     const next: Record<string, string> = {};
     for (const s of STATUSES) {
       const v = config.wipLimits?.[s];
@@ -40,6 +42,7 @@ export default function Settings() {
       }
       const res = await apiRequest("PUT", "/api/config", {
         archiveDays: Number(archiveDays) || 0,
+        staleDays: Number(staleDays) || 0,
         wipLimits,
       });
       return res.json();
@@ -103,6 +106,29 @@ export default function Settings() {
                     value={archiveDays}
                     onChange={(e) => setArchiveDays(e.target.value)}
                     data-testid="input-archive-days"
+                  />
+                </div>
+              </div>
+            </Card>
+
+            <Card className="p-4 space-y-3">
+              <h2 className="text-sm font-semibold">Пометка зависших задач</h2>
+              <p className="text-xs text-muted-foreground">
+                Незавершённые задачи, у которых статус не менялся дольше указанного
+                числа дней, помечаются на доске значком. Укажите 0, чтобы отключить.
+              </p>
+              <div className="flex items-end gap-2 max-w-xs">
+                <div className="flex-1">
+                  <FieldLabel htmlFor="stale-days" className="text-xs">
+                    Дней до пометки как зависшей
+                  </FieldLabel>
+                  <Input
+                    id="stale-days"
+                    type="number"
+                    min={0}
+                    value={staleDays}
+                    onChange={(e) => setStaleDays(e.target.value)}
+                    data-testid="input-stale-days"
                   />
                 </div>
               </div>
