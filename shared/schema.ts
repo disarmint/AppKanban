@@ -50,6 +50,9 @@ export type Department = typeof departments.$inferSelect;
 export const STATUSES = ["Запланировано", "В процессе", "Завершено"] as const;
 export type TaskStatus = (typeof STATUSES)[number];
 
+export const PRIORITIES = ["Низкий", "Средний", "Высокий", "Критический"] as const;
+export type Priority = (typeof PRIORITIES)[number];
+
 export const tasks = sqliteTable("tasks", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   departmentId: integer("department_id")
@@ -65,6 +68,9 @@ export const tasks = sqliteTable("tasks", {
   deadlineDate: text("deadline_date"),
   assigneeId: integer("assignee_id").references(() => users.id),
   status: text("status").notNull().default("Запланировано"),
+  // Task priority. NOT NULL with a "Средний" default so every row always has a
+  // value (existing rows backfilled by migration).
+  priority: text("priority").notNull().default("Средний"),
   // Epoch ms when the task most recently entered the final ("Завершено")
   // column. Drives autoarchival. Null while the task is not completed.
   completedAt: integer("completed_at"),
@@ -81,6 +87,7 @@ export const insertTaskSchema = createInsertSchema(tasks)
   .omit({ id: true, completedAt: true, archived: true, statusChangedAt: true })
   .extend({
     status: z.enum(STATUSES).default("Запланировано"),
+    priority: z.enum(PRIORITIES).default("Средний"),
     deadlineDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Неверная дата").nullable().optional(),
     assigneeId: z.number().nullable().optional(),
   });

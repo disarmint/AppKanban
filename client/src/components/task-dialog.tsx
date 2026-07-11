@@ -36,9 +36,9 @@ import {
 import { Calendar } from "@/components/ui/calendar";
 import { cn } from "@/lib/utils";
 import { CalendarIcon, Loader2 } from "lucide-react";
-import { STATUSES } from "@shared/schema";
+import { STATUSES, PRIORITIES } from "@shared/schema";
 import { formatRuDate, parseIsoDate } from "@shared/ru-date";
-import type { Department, TaskWithDepartment, UserPublic } from "@shared/schema";
+import type { Department, TaskWithDepartment, UserPublic, Priority } from "@shared/schema";
 
 const taskFormSchema = z.object({
   departmentId: z.string().min(1, "Выберите отдел"),
@@ -48,6 +48,7 @@ const taskFormSchema = z.object({
   deadlineDate: z.date({ required_error: "Выберите дедлайн" }),
   assigneeId: z.string(),
   status: z.string().min(1),
+  priority: z.enum(PRIORITIES),
 });
 
 const UNASSIGNED = "none";
@@ -85,6 +86,7 @@ export function TaskDialog({
       deadlineDate: undefined,
       assigneeId: UNASSIGNED,
       status: "Запланировано",
+      priority: "Средний",
     },
   });
 
@@ -101,6 +103,7 @@ export function TaskDialog({
                 parseIsoDate(task.deadlineDate) ?? undefined,
               assigneeId: task.assigneeId ? String(task.assigneeId) : UNASSIGNED,
               status: task.status,
+              priority: task.priority as Priority,
             }
           : {
               departmentId: departments[0] ? String(departments[0].id) : "",
@@ -110,6 +113,7 @@ export function TaskDialog({
               deadlineDate: undefined,
               assigneeId: UNASSIGNED,
               status: "Запланировано",
+              priority: "Средний",
             }
       );
     }
@@ -252,30 +256,56 @@ export function TaskDialog({
                 </FormItem>
               )}
             />
-            <FormField
-              control={form.control}
-              name="status"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Статус</FormLabel>
-                  <Select onValueChange={field.onChange} value={field.value}>
-                    <FormControl>
-                      <SelectTrigger data-testid="select-status">
-                        <SelectValue />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      {STATUS_OPTIONS.map((s) => (
-                        <SelectItem key={s} value={s}>
-                          {s}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+            <div className="grid grid-cols-2 gap-3">
+              <FormField
+                control={form.control}
+                name="status"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Статус</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger data-testid="select-status">
+                          <SelectValue />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {STATUS_OPTIONS.map((s) => (
+                          <SelectItem key={s} value={s}>
+                            {s}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="priority"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Приоритет</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger data-testid="select-priority">
+                          <SelectValue />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {PRIORITIES.map((p) => (
+                          <SelectItem key={p} value={p}>
+                            {p}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
             <DialogFooter>
               <Button
                 type="button"

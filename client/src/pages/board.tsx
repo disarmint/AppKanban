@@ -71,15 +71,24 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { Link } from "wouter";
-import { STATUSES } from "@shared/schema";
+import { STATUSES, PRIORITIES } from "@shared/schema";
 import { toIsoDate, daysOverdueFromIso, formatRuDate, parseIsoDate } from "@shared/ru-date";
-import type { Department, TaskWithDepartment, UserPublic, Label, AppConfig } from "@shared/schema";
+import type { Department, TaskWithDepartment, UserPublic, Label, AppConfig, Priority } from "@shared/schema";
 
 const STATUS_COLUMNS: { status: (typeof STATUSES)[number]; label: string }[] = [
   { status: "Запланировано", label: "Запланировано" },
   { status: "В процессе", label: "В процессе" },
   { status: "Завершено", label: "Завершено" },
 ];
+
+// Priority pill/chip colors. Низкий=grey, Средний=blue, Высокий=orange,
+// Критический=red.
+const PRIORITY_META: Record<Priority, { dot: string; className: string }> = {
+  Низкий: { dot: "#6b7280", className: "bg-muted text-muted-foreground" },
+  Средний: { dot: "#3b82f6", className: "bg-blue-500/15 text-blue-600 dark:text-blue-400" },
+  Высокий: { dot: "#f97316", className: "bg-orange-500/15 text-orange-600 dark:text-orange-400" },
+  Критический: { dot: "#ef4444", className: "bg-destructive/15 text-destructive" },
+};
 
 export default function Board() {
   const { user, logout } = useAuth();
@@ -96,6 +105,7 @@ export default function Board() {
   const [checklistTask, setChecklistTask] = useState<TaskWithDepartment | null>(null);
   const [labelsTask, setLabelsTask] = useState<TaskWithDepartment | null>(null);
   const [activeLabels, setActiveLabels] = useState<Set<number>>(new Set());
+  const [activePriorities, setActivePriorities] = useState<Set<Priority>>(new Set());
   const [activeDragId, setActiveDragId] = useState<number | null>(null);
 
   const isAdmin = user?.role === "admin";
@@ -139,6 +149,7 @@ export default function Board() {
         deadlineDate: toIsoDate(values.deadlineDate),
         assigneeId: values.assigneeId === "none" ? null : Number(values.assigneeId),
         status: values.status,
+        priority: values.priority,
       });
       return res.json();
     },
@@ -190,6 +201,7 @@ export default function Board() {
     return tasks.filter((t) => {
       if (activeDepartments.size > 0 && !activeDepartments.has(t.departmentId)) return false;
       if (activeLabels.size > 0 && !t.labels.some((l) => activeLabels.has(l.id))) return false;
+      if (activePriorities.size > 0 && !activePriorities.has(t.priority as Priority)) return false;
       if (!q) return true;
       return (
         t.title.toLowerCase().includes(q) ||
@@ -197,7 +209,7 @@ export default function Board() {
         t.department?.name.toLowerCase().includes(q)
       );
     });
-  }, [tasks, activeDepartments, activeLabels, search]);
+  }, [tasks, activeDepartments, activeLabels, activePriorities, search]);
 
   const stats = useMemo(() => {
     const total = tasks.length;
@@ -222,6 +234,15 @@ export default function Board() {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
+      return next;
+    });
+  }
+
+  function togglePriority(p: Priority) {
+    setActivePriorities((prev) => {
+      const next = new Set(prev);
+      if (next.has(p)) next.delete(p);
+      else next.add(p);
       return next;
     });
   }
@@ -408,6 +429,27 @@ export default function Board() {
             })}
           </div>
         )}
+
+        <div className="flex gap-2 overflow-x-auto" data-testid="priority-filter">
+          {PRIORITIES.map((p) => {
+            const active = activePriorities.has(p);
+            const meta = PRIORITY_META[p];
+            return (
+              <button
+                key={p}
+                onClick={() => togglePriority(p)}
+                data-testid={`chip-priority-${p}`}
+                className={`toggle-elevate shrink-0 inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
+                  active ? "toggle-elevated" : ""
+                }`}
+                style={{ borderColor: active ? meta.dot : "var(--border)", color: active ? meta.dot : undefined }}
+              >
+                <span className="h-2 w-2 rounded-full" style={{ backgroundColor: meta.dot }} />
+                {p}
+              </button>
+            );
+          })}
+        </div>
 
         {/* Kanban columns */}
         {isLoading ? (
@@ -712,6 +754,17 @@ function TaskCardView({
           >
             {task.department?.name}
           </Badge>
+          <span
+            className={`inline-flex items-center gap-1 rounded-md px-1.5 py-0 text-[10px] font-medium ${PRIORITY_META[task.priority as Priority]?.className ?? ""}`}
+            data-testid={`badge-priority-${task.id}`}
+            title={`Приоритет: ${task.priority}`}
+          >
+            <span
+              className="h-1.5 w-1.5 rounded-full"
+              style={{ backgroundColor: PRIORITY_META[task.priority as Priority]?.dot }}
+            />
+            {task.priority}
+          </span>
           {isStale && (
             <TooltipProvider>
               <Tooltip>
