@@ -25,6 +25,21 @@ const updateUserSchema = z.object({
   departmentId: z.number().nullable().optional(),
 });
 
+const createDepartmentSchema = z.object({
+  name: z.string().min(1, "Введите название отдела"),
+  color: z.string().min(1),
+  roadmapPeriod: z.string().min(1, "Укажите период"),
+  roadmapStatus: z.string().min(1, "Укажите статус"),
+});
+
+const updateDepartmentSchema = z.object({
+  name: z.string().min(1).optional(),
+  color: z.string().min(1).optional(),
+  roadmapPeriod: z.string().min(1).optional(),
+  roadmapStatus: z.string().min(1).optional(),
+  orderIndex: z.number().optional(),
+});
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express
@@ -138,10 +153,66 @@ export async function registerRoutes(
     res.status(204).end();
   });
 
-  // --- Departments (read-only for everyone, informational roadmap) ---
+  // --- Departments (read for everyone, write admin-only) ---
   app.get("/api/departments", requireAuth, async (_req, res) => {
     const departments = await storage.getDepartments();
     res.json(departments);
+  });
+
+  app.post("/api/departments", requireAuth, requireAdmin, async (req, res) => {
+    const parsed = createDepartmentSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ message: "Некорректные данные отдела" });
+    }
+    const existing = await storage.getDepartments();
+    if (existing.some((d) => d.name.toLowerCase() === parsed.data.name.toLowerCase())) {
+      return res.status(409).json({ message: "Отдел с таким названием уже существует" });
+    }
+    const orderIndex = existing.length > 0 ? Math.max(...existing.map((d) => d.orderIndex)) + 1 : 1;
+    const department = await storage.createDepartment({ ...parsed.data, orderIndex });
+    res.status(201).json(department);
+  });
+
+  app.patch("/api/departments/:id", requireAuth, requireAdmin, async (req, res) => {
+    const id = Number(req.params.id);
+    if (Number.isNaN(id)) {
+      return res.status(400).json({ message: "Некорректный id" });
+    }
+    const parsed = updateDepartmentSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ message: "Некорректные данные отдела" });
+    }
+    if (parsed.data.name) {
+      const existing = await storage.getDepartments();
+      if (existing.some((d) => d.id !== id && d.name.toLowerCase() === parsed.data.name!.toLowerCase())) {
+        return res.status(409).json({ message: "Отдел с таким названием уже существует" });
+      }
+    }
+    const department = await storage.updateDepartment(id, parsed.data);
+    if (!department) return res.status(404).json({ message: "Отдел не найден" });
+    res.json(department);
+  });
+
+  app.delete("/api/departments/:id", requireAuth, requireAdmin, async (req, res) => {
+    const id = Number(req.params.id);
+    if (Number.isNaN(id)) {
+      return res.status(400).json({ message: "Некорректный id" });
+    }
+    const taskCount = await storage.countTasksByDepartment(id);
+    if (taskCount > 0) {
+      return res.status(400).json({
+        message: `Нельзя удалить отдел — в нём ${taskCount} ${taskCount === 1 ? "задача" : "задач"}. Сначала удалите или перенесите задачи`,
+      });
+    }
+    const userCount = await storage.countUsersByDepartment(id);
+    if (userCount > 0) {
+      return res.status(400).json({
+        message: `Нельзя удалить отдел — к нему привязано ${userCount} ${userCount === 1 ? "сотрудник" : "сотрудников"}. Сначала переназначьте их`,
+      });
+    }
+    const ok = await storage.deleteDepartment(id);
+    if (!ok) return res.status(404).json({ message: "Отдел не найден" });
+    res.status(204).end();
   });
 
   // --- Tasks (scoped by department for non-admins) ---

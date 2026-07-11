@@ -5,6 +5,7 @@ import type {
   InsertUser,
   Department,
   InsertDepartment,
+  UpdateDepartment,
   Task,
   InsertTask,
   UpdateTask,
@@ -77,7 +78,12 @@ export interface IStorage {
   deleteUser(id: number): Promise<boolean>;
 
   getDepartments(): Promise<Department[]>;
+  getDepartment(id: number): Promise<Department | undefined>;
   createDepartment(dept: InsertDepartment): Promise<Department>;
+  updateDepartment(id: number, data: UpdateDepartment): Promise<Department | undefined>;
+  deleteDepartment(id: number): Promise<boolean>;
+  countTasksByDepartment(id: number): Promise<number>;
+  countUsersByDepartment(id: number): Promise<number>;
 
   getTask(id: number): Promise<Task | undefined>;
   getTasks(): Promise<TaskWithDepartment[]>;
@@ -116,8 +122,29 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(departments).orderBy(departments.orderIndex).all();
   }
 
+  async getDepartment(id: number): Promise<Department | undefined> {
+    return db.select().from(departments).where(eq(departments.id, id)).get();
+  }
+
   async createDepartment(dept: InsertDepartment): Promise<Department> {
     return db.insert(departments).values(dept).returning().get();
+  }
+
+  async updateDepartment(id: number, data: UpdateDepartment): Promise<Department | undefined> {
+    return db.update(departments).set(data).where(eq(departments.id, id)).returning().get();
+  }
+
+  async deleteDepartment(id: number): Promise<boolean> {
+    const result = db.delete(departments).where(eq(departments.id, id)).run();
+    return result.changes > 0;
+  }
+
+  async countTasksByDepartment(id: number): Promise<number> {
+    return db.select().from(tasks).where(eq(tasks.departmentId, id)).all().length;
+  }
+
+  async countUsersByDepartment(id: number): Promise<number> {
+    return db.select().from(users).where(eq(users.departmentId, id)).all().length;
   }
 
   async getTask(id: number): Promise<Task | undefined> {

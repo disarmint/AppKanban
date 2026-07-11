@@ -19,6 +19,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { UserDialog, type UserFormValues } from "@/components/user-dialog";
+import { AdminNav } from "@/components/admin-nav";
 import { ArrowLeft, Plus, Pencil, Trash2, Users as UsersIcon } from "lucide-react";
 import type { Department, UserPublic } from "@shared/schema";
 
@@ -119,25 +120,31 @@ export default function Users() {
     <div className="min-h-screen bg-background">
       <header className="border-b bg-card">
         <div className="max-w-4xl mx-auto px-4 md:px-6 h-16 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="h-9 w-9 rounded-lg bg-primary flex items-center justify-center text-primary-foreground shrink-0">
-              <UsersIcon className="h-5 w-5" />
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+            <div className="h-8 w-8 sm:h-9 sm:w-9 rounded-lg bg-primary flex items-center justify-center text-primary-foreground shrink-0">
+              <UsersIcon className="h-4 w-4 sm:h-5 sm:w-5" />
             </div>
             <div className="min-w-0">
-              <h1 className="text-lg font-semibold leading-tight truncate" data-testid="text-users-title">
+              <h1 className="text-base sm:text-lg font-semibold leading-tight truncate" data-testid="text-users-title">
                 Пользователи
               </h1>
-              <p className="text-xs text-muted-foreground leading-tight">
+              <p className="text-xs text-muted-foreground leading-tight hidden sm:block">
                 {users.length} учётных записей
               </p>
             </div>
           </div>
-          <Link href="/">
-            <Button variant="outline" data-testid="link-back-to-board">
-              <ArrowLeft className="h-4 w-4" />
-              К доске
-            </Button>
-          </Link>
+          <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+            <AdminNav />
+            <Link href="/">
+              <Button variant="outline" size="icon" className="sm:hidden" data-testid="link-back-to-board" aria-label="К доске">
+                <ArrowLeft className="h-4 w-4" />
+              </Button>
+              <Button variant="outline" className="hidden sm:inline-flex" data-testid="link-back-to-board-full">
+                <ArrowLeft className="h-4 w-4" />
+                К доске
+              </Button>
+            </Link>
+          </div>
         </div>
       </header>
 

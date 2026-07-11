@@ -27,7 +27,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { TaskDialog, type TaskFormValues } from "@/components/task-dialog";
-import { Link } from "wouter";
+import { AdminNav } from "@/components/admin-nav";
 import {
   LayoutGrid,
   LogOut,
@@ -37,7 +37,6 @@ import {
   Pencil,
   Trash2,
   Search,
-  Users,
 } from "lucide-react";
 import { STATUSES } from "@shared/schema";
 import type { Department, TaskWithDepartment } from "@shared/schema";
@@ -184,28 +183,22 @@ export default function Board() {
   return (
     <div className="min-h-screen bg-background">
       <header className="border-b bg-card">
-        <div className="max-w-7xl mx-auto px-4 md:px-6 h-16 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="h-9 w-9 rounded-lg bg-primary flex items-center justify-center text-primary-foreground shrink-0">
-              <LayoutGrid className="h-5 w-5" />
+        <div className="max-w-7xl mx-auto px-4 md:px-6 h-16 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+            <div className="h-8 w-8 sm:h-9 sm:w-9 rounded-lg bg-primary flex items-center justify-center text-primary-foreground shrink-0">
+              <LayoutGrid className="h-4 w-4 sm:h-5 sm:w-5" />
             </div>
             <div className="min-w-0">
-              <h1 className="text-lg font-semibold leading-tight truncate" data-testid="text-app-title">
+              <h1 className="text-base sm:text-lg font-semibold leading-tight truncate" data-testid="text-app-title">
                 Отделы — канбан
               </h1>
-              <p className="text-xs text-muted-foreground leading-tight">
+              <p className="text-xs text-muted-foreground leading-tight hidden sm:block truncate">
                 {user?.username} · {isAdmin ? "администратор" : departments.find((d) => d.id === user?.departmentId)?.name ?? "сотрудник"}
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-2 shrink-0">
-            {isAdmin && (
-              <Link href="/users">
-                <Button variant="ghost" size="icon" data-testid="link-users" aria-label="Пользователи">
-                  <Users className="h-4 w-4" />
-                </Button>
-              </Link>
-            )}
+          <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+            {isAdmin && <AdminNav />}
             <Button
               variant="ghost"
               size="icon"
@@ -215,7 +208,10 @@ export default function Board() {
             >
               {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
             </Button>
-            <Button variant="outline" onClick={logout} data-testid="button-logout">
+            <Button variant="outline" size="icon" className="sm:hidden" onClick={logout} data-testid="button-logout" aria-label="Выйти">
+              <LogOut className="h-4 w-4" />
+            </Button>
+            <Button variant="outline" className="hidden sm:inline-flex" onClick={logout} data-testid="button-logout-full">
               <LogOut className="h-4 w-4" />
               Выйти
             </Button>

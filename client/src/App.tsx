@@ -10,6 +10,8 @@ import NotFound from "@/pages/not-found";
 import Login from "@/pages/login";
 import Board from "@/pages/board";
 import Users from "@/pages/users";
+import Departments from "@/pages/departments";
+import Analytics from "@/pages/analytics";
 
 function ProtectedRoute({ component: Component }: { component: () => JSX.Element }) {
   const { isAuthenticated } = useAuth();
@@ -36,6 +38,12 @@ function AppRouter() {
       </Route>
       <Route path="/users">
         <AdminRoute component={Users} />
+      </Route>
+      <Route path="/departments">
+        <AdminRoute component={Departments} />
+      </Route>
+      <Route path="/analytics">
+        <AdminRoute component={Analytics} />
       </Route>
       <Route component={NotFound} />
     </Switch>

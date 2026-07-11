@@ -37,7 +37,10 @@ export const insertDepartmentSchema = createInsertSchema(departments).omit({
   id: true,
 });
 
+export const updateDepartmentSchema = insertDepartmentSchema.partial();
+
 export type InsertDepartment = z.infer<typeof insertDepartmentSchema>;
+export type UpdateDepartment = z.infer<typeof updateDepartmentSchema>;
 export type Department = typeof departments.$inferSelect;
 
 export const STATUSES = ["Запланировано", "В процессе", "Завершено"] as const;
