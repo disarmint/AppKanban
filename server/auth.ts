@@ -1,7 +1,12 @@
 import type { Request, Response, NextFunction } from "express";
 import crypto from "node:crypto";
 
-type SessionInfo = { userId: number; username: string };
+type SessionInfo = {
+  userId: number;
+  username: string;
+  role: string;
+  departmentId: number | null;
+};
 
 const tokens = new Map<string, SessionInfo>();
 
@@ -34,5 +39,12 @@ export function requireAuth(req: Request, res: Response, next: NextFunction) {
     return res.status(401).json({ message: "Требуется авторизация" });
   }
   req.session = session;
+  next();
+}
+
+export function requireAdmin(req: Request, res: Response, next: NextFunction) {
+  if (req.session?.role !== "admin") {
+    return res.status(403).json({ message: "Недостаточно прав" });
+  }
   next();
 }

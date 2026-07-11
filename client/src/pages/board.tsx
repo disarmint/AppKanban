@@ -27,6 +27,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { TaskDialog, type TaskFormValues } from "@/components/task-dialog";
+import { Link } from "wouter";
 import {
   LayoutGrid,
   LogOut,
@@ -36,6 +37,7 @@ import {
   Pencil,
   Trash2,
   Search,
+  Users,
 } from "lucide-react";
 import { STATUSES } from "@shared/schema";
 import type { Department, TaskWithDepartment } from "@shared/schema";
@@ -57,6 +59,8 @@ export default function Board() {
   const [editingTask, setEditingTask] = useState<TaskWithDepartment | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<TaskWithDepartment | null>(null);
   const [dragOverStatus, setDragOverStatus] = useState<string | null>(null);
+
+  const isAdmin = user?.role === "admin";
 
   const { data: departments = [], isLoading: loadingDepartments } = useQuery<Department[]>({
     queryKey: ["/api/departments"],
@@ -190,11 +194,18 @@ export default function Board() {
                 Отделы — канбан
               </h1>
               <p className="text-xs text-muted-foreground leading-tight">
-                {user?.username}
+                {user?.username} · {isAdmin ? "администратор" : departments.find((d) => d.id === user?.departmentId)?.name ?? "сотрудник"}
               </p>
             </div>
           </div>
           <div className="flex items-center gap-2 shrink-0">
+            {isAdmin && (
+              <Link href="/users">
+                <Button variant="ghost" size="icon" data-testid="link-users" aria-label="Пользователи">
+                  <Users className="h-4 w-4" />
+                </Button>
+              </Link>
+            )}
             <Button
               variant="ghost"
               size="icon"
@@ -257,27 +268,29 @@ export default function Board() {
               data-testid="input-search"
             />
           </div>
-          <div className="flex gap-2 overflow-x-auto flex-1">
-            {departments.map((d) => {
-              const active = activeDepartments.has(d.id);
-              return (
-                <button
-                  key={d.id}
-                  onClick={() => toggleDepartment(d.id)}
-                  data-testid={`chip-department-${d.id}`}
-                  className={`toggle-elevate shrink-0 rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
-                    active ? "toggle-elevated" : ""
-                  }`}
-                  style={{
-                    borderColor: active ? d.color : "var(--border)",
-                    color: active ? d.color : undefined,
-                  }}
-                >
-                  {d.name}
-                </button>
-              );
-            })}
-          </div>
+          {isAdmin && (
+            <div className="flex gap-2 overflow-x-auto flex-1">
+              {departments.map((d) => {
+                const active = activeDepartments.has(d.id);
+                return (
+                  <button
+                    key={d.id}
+                    onClick={() => toggleDepartment(d.id)}
+                    data-testid={`chip-department-${d.id}`}
+                    className={`toggle-elevate shrink-0 rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
+                      active ? "toggle-elevated" : ""
+                    }`}
+                    style={{
+                      borderColor: active ? d.color : "var(--border)",
+                      color: active ? d.color : undefined,
+                    }}
+                  >
+                    {d.name}
+                  </button>
+                );
+              })}
+            </div>
+          )}
           <Button onClick={openCreate} data-testid="button-add-task">
             <Plus className="h-4 w-4" />
             Новая задача
@@ -350,7 +363,8 @@ export default function Board() {
           setDialogOpen(open);
           if (!open) setEditingTask(null);
         }}
-        departments={departments}
+        departments={isAdmin ? departments : departments.filter((d) => d.id === user?.departmentId)}
+        lockDepartment={!isAdmin}
         task={editingTask}
         onSubmit={handleSubmit}
         isSubmitting={createMutation.isPending || updateMutation.isPending}

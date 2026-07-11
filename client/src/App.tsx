@@ -9,10 +9,18 @@ import { ThemeProvider } from "@/lib/theme-provider";
 import NotFound from "@/pages/not-found";
 import Login from "@/pages/login";
 import Board from "@/pages/board";
+import Users from "@/pages/users";
 
 function ProtectedRoute({ component: Component }: { component: () => JSX.Element }) {
   const { isAuthenticated } = useAuth();
   if (!isAuthenticated) return <Redirect to="/login" />;
+  return <Component />;
+}
+
+function AdminRoute({ component: Component }: { component: () => JSX.Element }) {
+  const { isAuthenticated, user } = useAuth();
+  if (!isAuthenticated) return <Redirect to="/login" />;
+  if (user?.role !== "admin") return <Redirect to="/" />;
   return <Component />;
 }
 
@@ -25,6 +33,9 @@ function AppRouter() {
       </Route>
       <Route path="/">
         <ProtectedRoute component={Board} />
+      </Route>
+      <Route path="/users">
+        <AdminRoute component={Users} />
       </Route>
       <Route component={NotFound} />
     </Switch>

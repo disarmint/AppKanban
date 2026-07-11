@@ -33,6 +33,18 @@ export async function apiRequest(
   return res;
 }
 
+export function getErrorMessage(error: unknown): string | undefined {
+  if (!(error instanceof Error)) return undefined;
+  const match = error.message.match(/^\d+:\s*(.*)$/);
+  const body = match ? match[1] : error.message;
+  try {
+    const parsed = JSON.parse(body);
+    return typeof parsed.message === "string" ? parsed.message : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 type UnauthorizedBehavior = "returnNull" | "throw";
 export const getQueryFn: <T>(options: {
   on401: UnauthorizedBehavior;

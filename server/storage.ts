@@ -1,6 +1,7 @@
 import { users, departments, tasks } from "@shared/schema";
 import type {
   User,
+  UserPublic,
   InsertUser,
   Department,
   InsertDepartment,
@@ -23,7 +24,9 @@ sqlite.exec(`
   CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     username TEXT NOT NULL UNIQUE,
-    password_hash TEXT NOT NULL
+    password_hash TEXT NOT NULL,
+    role TEXT NOT NULL DEFAULT 'member',
+    department_id INTEGER
   );
   CREATE TABLE IF NOT EXISTS departments (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -44,19 +47,39 @@ sqlite.exec(`
   );
 `);
 
+// Migration guard: add columns to a users table created before roles existed.
+const userColumns = sqlite.prepare("PRAGMA table_info(users)").all() as { name: string }[];
+const userColumnNames = new Set(userColumns.map((c) => c.name));
+if (!userColumnNames.has("role")) {
+  sqlite.exec("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'member'");
+  sqlite.exec("UPDATE users SET role = 'admin' WHERE username = 'admin'");
+}
+if (!userColumnNames.has("department_id")) {
+  sqlite.exec("ALTER TABLE users ADD COLUMN department_id INTEGER");
+}
+
 export function hashPassword(password: string): string {
   const salt = "kanban-app-static-salt";
   return crypto.createHash("sha256").update(salt + password).digest("hex");
 }
 
+export function toPublicUser(user: User): UserPublic {
+  const { passwordHash, ...rest } = user;
+  return rest;
+}
+
 export interface IStorage {
   getUser(id: number): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
+  getUsers(): Promise<User[]>;
   createUser(user: InsertUser): Promise<User>;
+  updateUser(id: number, data: Partial<InsertUser>): Promise<User | undefined>;
+  deleteUser(id: number): Promise<boolean>;
 
   getDepartments(): Promise<Department[]>;
   createDepartment(dept: InsertDepartment): Promise<Department>;
 
+  getTask(id: number): Promise<Task | undefined>;
   getTasks(): Promise<TaskWithDepartment[]>;
   createTask(task: InsertTask): Promise<Task>;
   updateTask(id: number, task: UpdateTask): Promise<Task | undefined>;
@@ -72,8 +95,21 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(users).where(eq(users.username, username)).get();
   }
 
+  async getUsers(): Promise<User[]> {
+    return db.select().from(users).all();
+  }
+
   async createUser(insertUser: InsertUser): Promise<User> {
     return db.insert(users).values(insertUser).returning().get();
+  }
+
+  async updateUser(id: number, data: Partial<InsertUser>): Promise<User | undefined> {
+    return db.update(users).set(data).where(eq(users.id, id)).returning().get();
+  }
+
+  async deleteUser(id: number): Promise<boolean> {
+    const result = db.delete(users).where(eq(users.id, id)).run();
+    return result.changes > 0;
   }
 
   async getDepartments(): Promise<Department[]> {
@@ -82,6 +118,10 @@ export class DatabaseStorage implements IStorage {
 
   async createDepartment(dept: InsertDepartment): Promise<Department> {
     return db.insert(departments).values(dept).returning().get();
+  }
+
+  async getTask(id: number): Promise<Task | undefined> {
+    return db.select().from(tasks).where(eq(tasks.id, id)).get();
   }
 
   async getTasks(): Promise<TaskWithDepartment[]> {

@@ -1,7 +1,12 @@
 import { createContext, useContext, useState, useCallback, ReactNode } from "react";
 import { apiRequest, setAuthToken, queryClient } from "@/lib/queryClient";
 
-type AuthUser = { id: number; username: string };
+type AuthUser = {
+  id: number;
+  username: string;
+  role: "admin" | "member";
+  departmentId: number | null;
+};
 
 type AuthContextValue = {
   user: AuthUser | null;

@@ -2,19 +2,27 @@ import { sqliteTable, text, integer } from "drizzle-orm/sqlite-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
+export const ROLES = ["admin", "member"] as const;
+export type Role = (typeof ROLES)[number];
+
 export const users = sqliteTable("users", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   username: text("username").notNull().unique(),
   passwordHash: text("password_hash").notNull(),
+  role: text("role").notNull().default("member"),
+  departmentId: integer("department_id"),
 });
 
 export const insertUserSchema = createInsertSchema(users).pick({
   username: true,
   passwordHash: true,
+  role: true,
+  departmentId: true,
 });
 
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
+export type UserPublic = Omit<User, "passwordHash">;
 
 export const departments = sqliteTable("departments", {
   id: integer("id").primaryKey({ autoIncrement: true }),

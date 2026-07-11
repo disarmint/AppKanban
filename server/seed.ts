@@ -12,6 +12,8 @@ export async function seedDatabase() {
       .values({
         username: DEFAULT_USERNAME,
         passwordHash: hashPassword(DEFAULT_PASSWORD),
+        role: "admin",
+        departmentId: null,
       })
       .run();
     console.log(`[seed] created default user "${DEFAULT_USERNAME}"`);

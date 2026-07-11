@@ -49,6 +49,7 @@ export function TaskDialog({
   open,
   onOpenChange,
   departments,
+  lockDepartment,
   task,
   onSubmit,
   isSubmitting,
@@ -56,6 +57,7 @@ export function TaskDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
   departments: Department[];
+  lockDepartment?: boolean;
   task: TaskWithDepartment | null;
   onSubmit: (values: TaskFormValues) => void;
   isSubmitting: boolean;
@@ -113,7 +115,7 @@ export function TaskDialog({
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Отдел</FormLabel>
-                  <Select onValueChange={field.onChange} value={field.value}>
+                  <Select onValueChange={field.onChange} value={field.value} disabled={lockDepartment}>
                     <FormControl>
                       <SelectTrigger data-testid="select-department">
                         <SelectValue placeholder="Выберите отдел" />
