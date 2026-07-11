@@ -1,7 +1,6 @@
 import Database from "better-sqlite3";
 import { readFileSync, existsSync } from "node:fs";
-import { fileURLToPath } from "node:url";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 
 /**
  * Single source of truth for the runtime database schema.
@@ -18,16 +17,21 @@ import { dirname, join } from "node:path";
  * both fresh and legacy databases.
  */
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
+// esbuild's cjs bundle provides a native __dirname; in dev (tsx ESM) there is
+// no __dirname binding, so `typeof` returns "undefined" without throwing. We
+// avoid import.meta.url entirely because it is empty in the cjs output format.
+const scriptDir = typeof __dirname !== "undefined" ? __dirname : undefined;
 
 // In dev (tsx) migrations sit at ../migrations relative to server/. In the
 // esbuild bundle (dist/index.cjs) they sit next to the bundle at ../migrations.
+// Both dev and prod are launched from the project root, so cwd/migrations is a
+// reliable fallback.
 function migrationsDir(): string {
   const candidates = [
-    join(__dirname, "..", "migrations"),
+    scriptDir ? join(scriptDir, "..", "migrations") : undefined,
     join(process.cwd(), "migrations"),
-  ];
-  return candidates.find((p) => existsSync(join(p, "meta", "_journal.json"))) ?? candidates[0];
+  ].filter((p): p is string => p !== undefined);
+  return candidates.find((p) => existsSync(join(p, "meta", "_journal.json"))) ?? candidates[candidates.length - 1];
 }
 
 type JournalEntry = { idx: number; tag: string };
