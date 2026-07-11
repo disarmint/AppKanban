@@ -59,12 +59,19 @@ export const tasks = sqliteTable("tasks", {
   title: text("title").notNull(),
   week: text("week").notNull(),
   deadline: text("deadline").notNull(),
+  // Canonical machine-readable deadline, ISO "YYYY-MM-DD". Nullable because a
+  // legacy free-text `deadline` may not be parseable. `deadline` is kept as the
+  // human-facing label; `deadlineDate` drives sorting and urgency colors.
+  deadlineDate: text("deadline_date"),
   status: text("status").notNull().default("Запланировано"),
 });
 
 export const insertTaskSchema = createInsertSchema(tasks)
   .omit({ id: true })
-  .extend({ status: z.enum(STATUSES).default("Запланировано") });
+  .extend({
+    status: z.enum(STATUSES).default("Запланировано"),
+    deadlineDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Неверная дата").nullable().optional(),
+  });
 
 export const updateTaskSchema = insertTaskSchema.partial();
 

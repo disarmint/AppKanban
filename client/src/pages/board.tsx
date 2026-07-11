@@ -39,6 +39,7 @@ import {
   Search,
 } from "lucide-react";
 import { STATUSES } from "@shared/schema";
+import { toIsoDate, daysOverdueFromIso, formatRuDate, parseIsoDate } from "@shared/ru-date";
 import type { Department, TaskWithDepartment } from "@shared/schema";
 
 const STATUS_COLUMNS: { status: (typeof STATUSES)[number]; label: string }[] = [
@@ -76,7 +77,8 @@ export default function Board() {
         title: values.title,
         goal: values.goal,
         week: values.week,
-        deadline: values.deadline,
+        deadline: formatRuDate(values.deadlineDate),
+        deadlineDate: toIsoDate(values.deadlineDate),
         status: values.status,
       });
       return res.json();
@@ -94,6 +96,9 @@ export default function Board() {
       const payload: Record<string, unknown> = { ...values };
       if (values.departmentId !== undefined) {
         payload.departmentId = Number(values.departmentId);
+      }
+      if (values.deadlineDate !== undefined) {
+        payload.deadlineDate = toIsoDate(values.deadlineDate);
       }
       const res = await apiRequest("PATCH", `/api/tasks/${id}`, payload);
       return res.json();
@@ -417,6 +422,29 @@ function StatCard({
   );
 }
 
+function DeadlineBadge({ task }: { task: TaskWithDepartment }) {
+  const iso = task.deadlineDate;
+  const overdue = daysOverdueFromIso(iso);
+  const parsed = parseIsoDate(iso);
+  const label = parsed ? formatRuDate(parsed) : task.deadline;
+
+  // grey = normal / unknown, amber = due within 2 days, red = overdue.
+  let tone = "bg-muted text-muted-foreground";
+  if (overdue !== null) {
+    if (overdue > 0) tone = "bg-destructive/15 text-destructive";
+    else if (overdue >= -2) tone = "bg-amber-500/15 text-amber-600 dark:text-amber-400";
+  }
+
+  return (
+    <span
+      className={`inline-flex items-center rounded-md px-1.5 py-0 text-[10px] font-medium ${tone}`}
+      data-testid={`deadline-${task.id}`}
+    >
+      {label}
+    </span>
+  );
+}
+
 function TaskCard({
   task,
   onEdit,
@@ -475,9 +503,7 @@ function TaskCard({
           <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
             {task.week}
           </Badge>
-          <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
-            {task.deadline}
-          </Badge>
+          <DeadlineBadge task={task} />
         </div>
       </div>
       <Select value={task.status} onValueChange={onStatusChange}>

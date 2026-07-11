@@ -2,10 +2,21 @@ import type { Express } from "express";
 import { createServer } from "node:http";
 import type { Server } from "node:http";
 import { storage, hashPassword, verifyPassword, toPublicUser } from "./storage";
-import { seedDatabase, migrateLegacyPasswords } from "./seed";
+import { seedDatabase, migrateLegacyPasswords, backfillDeadlineDates } from "./seed";
 import { createToken, destroyToken, requireAuth, requireAdmin } from "./auth";
 import { insertTaskSchema, updateTaskSchema, ROLES } from "@shared/schema";
+import { parseIsoDate, formatRuDate } from "@shared/ru-date";
 import { z } from "zod";
+
+/** Keep the human-facing `deadline` label in sync with the canonical
+ * `deadlineDate` (ISO) whenever the picker supplies a date. */
+function syncDeadline<T extends { deadlineDate?: string | null; deadline?: string }>(data: T): T {
+  if (data.deadlineDate) {
+    const d = parseIsoDate(data.deadlineDate);
+    if (d) data.deadline = formatRuDate(d);
+  }
+  return data;
+}
 
 const loginSchema = z.object({
   username: z.string().min(1),
@@ -50,6 +61,7 @@ export async function registerRoutes(
 ): Promise<Server> {
   await seedDatabase();
   migrateLegacyPasswords();
+  backfillDeadlineDates();
 
   app.post("/api/login", async (req, res) => {
     const parsed = loginSchema.safeParse(req.body);
@@ -253,7 +265,7 @@ export async function registerRoutes(
         return res.status(403).json({ message: "Можно создавать задачи только в своём отделе" });
       }
     }
-    const task = await storage.createTask(parsed.data);
+    const task = await storage.createTask(syncDeadline(parsed.data));
     res.status(201).json(task);
   });
 
@@ -275,7 +287,7 @@ export async function registerRoutes(
         return res.status(403).json({ message: "Нельзя переносить задачу в другой отдел" });
       }
     }
-    const task = await storage.updateTask(id, parsed.data);
+    const task = await storage.updateTask(id, syncDeadline(parsed.data));
     if (!task) {
       return res.status(404).json({ message: "Задача не найдена" });
     }

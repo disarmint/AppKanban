@@ -1,6 +1,7 @@
-import { eq } from "drizzle-orm";
+import { eq, isNull } from "drizzle-orm";
 import { db, hashPassword, isLegacyHash } from "./storage";
 import { users, departments, tasks } from "@shared/schema";
+import { parseRuDate, toIsoDate } from "@shared/ru-date";
 import seedData from "./seed-data.json";
 
 const DEFAULT_USERNAME = "admin";
@@ -76,6 +77,7 @@ export async function seedDatabase() {
     for (const t of seedData.tasks) {
       const departmentId = departmentIdByName.get(t.departmentName);
       if (!departmentId) continue;
+      const parsed = parseRuDate(t.deadline);
       db.insert(tasks)
         .values({
           departmentId,
@@ -83,10 +85,43 @@ export async function seedDatabase() {
           title: t.title,
           week: t.week,
           deadline: t.deadline,
+          deadlineDate: parsed ? toIsoDate(parsed) : null,
           status: t.status,
         })
         .run();
     }
     console.log(`[seed] created ${seedData.tasks.length} tasks`);
   }
+}
+
+/** One-time normalization of free-text `deadline` into machine-readable
+ * `deadlineDate` (ISO). Runs for rows where deadlineDate is still null.
+ * Returns the tasks whose deadline could not be parsed (left as null) so the
+ * owner can fix them by hand. */
+export function backfillDeadlineDates(): { id: number; title: string; deadline: string }[] {
+  const rows = db.select().from(tasks).where(isNull(tasks.deadlineDate)).all();
+  const unparsed: { id: number; title: string; deadline: string }[] = [];
+  let filled = 0;
+  for (const t of rows) {
+    const parsed = parseRuDate(t.deadline);
+    if (parsed) {
+      db.update(tasks)
+        .set({ deadlineDate: toIsoDate(parsed) })
+        .where(eq(tasks.id, t.id))
+        .run();
+      filled++;
+    } else {
+      unparsed.push({ id: t.id, title: t.title, deadline: t.deadline });
+    }
+  }
+  if (filled > 0 || unparsed.length > 0) {
+    console.log(
+      `[deadline] backfilled ${filled} deadline date(s)` +
+        (unparsed.length > 0
+          ? `; ${unparsed.length} unparseable: ` +
+            unparsed.map((u) => `#${u.id} "${u.deadline}"`).join(", ")
+          : "")
+    );
+  }
+  return unparsed;
 }

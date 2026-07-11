@@ -28,8 +28,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Loader2 } from "lucide-react";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
+import { cn } from "@/lib/utils";
+import { CalendarIcon, Loader2 } from "lucide-react";
 import { STATUSES } from "@shared/schema";
+import { formatRuDate, parseIsoDate } from "@shared/ru-date";
 import type { Department, TaskWithDepartment } from "@shared/schema";
 
 const taskFormSchema = z.object({
@@ -37,7 +45,7 @@ const taskFormSchema = z.object({
   title: z.string().min(1, "Введите задачу"),
   goal: z.string().min(1, "Введите цель"),
   week: z.string().min(1, "Введите неделю"),
-  deadline: z.string().min(1, "Введите дедлайн"),
+  deadlineDate: z.date({ required_error: "Выберите дедлайн" }),
   status: z.string().min(1),
 });
 
@@ -69,7 +77,7 @@ export function TaskDialog({
       title: "",
       goal: "",
       week: "",
-      deadline: "",
+      deadlineDate: undefined,
       status: "Запланировано",
     },
   });
@@ -83,7 +91,8 @@ export function TaskDialog({
               title: task.title,
               goal: task.goal,
               week: task.week,
-              deadline: task.deadline,
+              deadlineDate:
+                parseIsoDate(task.deadlineDate) ?? undefined,
               status: task.status,
             }
           : {
@@ -91,7 +100,7 @@ export function TaskDialog({
               title: "",
               goal: "",
               week: "",
-              deadline: "",
+              deadlineDate: undefined,
               status: "Запланировано",
             }
       );
@@ -175,13 +184,36 @@ export function TaskDialog({
               />
               <FormField
                 control={form.control}
-                name="deadline"
+                name="deadlineDate"
                 render={({ field }) => (
-                  <FormItem>
+                  <FormItem className="flex flex-col">
                     <FormLabel>Дедлайн</FormLabel>
-                    <FormControl>
-                      <Input data-testid="input-deadline" {...field} />
-                    </FormControl>
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <FormControl>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            className={cn(
+                              "justify-start text-left font-normal",
+                              !field.value && "text-muted-foreground"
+                            )}
+                            data-testid="input-deadline"
+                          >
+                            <CalendarIcon className="h-4 w-4" />
+                            {field.value ? formatRuDate(field.value) : "Выберите дату"}
+                          </Button>
+                        </FormControl>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0" align="start">
+                        <Calendar
+                          mode="single"
+                          selected={field.value}
+                          onSelect={field.onChange}
+                          initialFocus
+                        />
+                      </PopoverContent>
+                    </Popover>
                     <FormMessage />
                   </FormItem>
                 )}
