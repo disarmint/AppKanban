@@ -328,6 +328,14 @@ export async function registerRoutes(
     const assigneeError = await checkAssignee(parsed.data.assigneeId, req.session!);
     if (assigneeError) return res.status(400).json({ message: assigneeError });
     const task = await storage.createTask(syncDeadline(parsed.data));
+    if (task.assigneeId && task.assigneeId !== req.session!.userId) {
+      await storage.createNotification({
+        userId: task.assigneeId,
+        type: "assignment",
+        taskId: task.id,
+        message: `Вас назначили ответственным за задачу «${task.title}»`,
+      });
+    }
     res.status(201).json(task);
   });
 
@@ -351,9 +359,24 @@ export async function registerRoutes(
     }
     const assigneeError = await checkAssignee(parsed.data.assigneeId, req.session!);
     if (assigneeError) return res.status(400).json({ message: assigneeError });
+    const before = await storage.getTask(id);
     const task = await storage.updateTask(id, syncDeadline(parsed.data));
     if (!task) {
       return res.status(404).json({ message: "Задача не найдена" });
+    }
+    // Notify on a *new* assignee (changed to a non-empty value that isn't the
+    // person making the change).
+    if (
+      task.assigneeId &&
+      task.assigneeId !== before?.assigneeId &&
+      task.assigneeId !== req.session!.userId
+    ) {
+      await storage.createNotification({
+        userId: task.assigneeId,
+        type: "assignment",
+        taskId: task.id,
+        message: `Вас назначили ответственным за задачу «${task.title}»`,
+      });
     }
     res.json(task);
   });
@@ -400,6 +423,31 @@ export async function registerRoutes(
     if (!parsed.success) return res.status(400).json({ message: "Некорректные настройки" });
     const config = await storage.setConfig(parsed.data);
     res.json(config);
+  });
+
+  // --- Notifications (scoped to the current user; no cross-user access) ---
+  app.get("/api/notifications", requireAuth, async (req, res) => {
+    res.json(await storage.getNotifications(req.session!.userId));
+  });
+
+  app.get("/api/notifications/unread-count", requireAuth, async (req, res) => {
+    const list = await storage.getNotifications(req.session!.userId);
+    res.json({ count: list.filter((n) => !n.read).length });
+  });
+
+  app.post("/api/notifications/:id/read", requireAuth, async (req, res) => {
+    const id = Number(req.params.id);
+    if (Number.isNaN(id)) return res.status(400).json({ message: "Некорректный id" });
+    const n = await storage.getNotification(id);
+    if (!n || n.userId !== req.session!.userId) {
+      return res.status(404).json({ message: "Уведомление не найдено" });
+    }
+    res.json(await storage.markNotificationRead(id));
+  });
+
+  app.post("/api/notifications/read-all", requireAuth, async (req, res) => {
+    await storage.markAllNotificationsRead(req.session!.userId);
+    res.status(204).end();
   });
 
   // --- Reports (admin only): completed tasks in a date range + Excel export ---
@@ -482,6 +530,16 @@ export async function registerRoutes(
     const parsed = insertCommentSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ message: "Введите комментарий" });
     const comment = await storage.createComment(taskId, req.session!.userId, parsed.data.body);
+    // Notify the assignee (unless they wrote the comment themselves).
+    const task = await storage.getTask(taskId);
+    if (task?.assigneeId && task.assigneeId !== req.session!.userId) {
+      await storage.createNotification({
+        userId: task.assigneeId,
+        type: "comment",
+        taskId,
+        message: `Новый комментарий к задаче «${task.title}»`,
+      });
+    }
     const [withAuthor] = (await storage.getComments(taskId)).filter((c) => c.id === comment.id);
     res.status(201).json(withAuthor ?? comment);
   });

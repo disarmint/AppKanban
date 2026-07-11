@@ -1,4 +1,4 @@
-import { users, departments, tasks, taskComments, checklistItems, labels, taskLabels, appSettings } from "@shared/schema";
+import { users, departments, tasks, taskComments, checklistItems, labels, taskLabels, appSettings, notifications } from "@shared/schema";
 import type {
   User,
   UserPublic,
@@ -15,10 +15,12 @@ import type {
   ChecklistItem,
   Label,
   AppConfig,
+  Notification,
+  NotificationType,
 } from "@shared/schema";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import Database from "better-sqlite3";
-import { eq, and } from "drizzle-orm";
+import { eq, and, desc } from "drizzle-orm";
 import crypto from "node:crypto";
 import { initDatabase } from "./db-init";
 
@@ -103,6 +105,18 @@ export interface IStorage {
   deleteLabel(id: number): Promise<boolean>;
   addTaskLabel(taskId: number, labelId: number): Promise<void>;
   removeTaskLabel(taskId: number, labelId: number): Promise<void>;
+
+  getNotifications(userId: number): Promise<Notification[]>;
+  getNotification(id: number): Promise<Notification | undefined>;
+  createNotification(data: {
+    userId: number;
+    type: NotificationType;
+    taskId: number;
+    message: string;
+  }): Promise<Notification>;
+  markNotificationRead(id: number): Promise<Notification | undefined>;
+  markAllNotificationsRead(userId: number): Promise<void>;
+  hasRecentDeadlineNotification(taskId: number, sinceMs: number): Promise<boolean>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -371,8 +385,58 @@ export class DatabaseStorage implements IStorage {
     db.delete(taskComments).where(eq(taskComments.taskId, id)).run();
     db.delete(checklistItems).where(eq(checklistItems.taskId, id)).run();
     db.delete(taskLabels).where(eq(taskLabels.taskId, id)).run();
+    db.delete(notifications).where(eq(notifications.taskId, id)).run();
     const result = db.delete(tasks).where(eq(tasks.id, id)).run();
     return result.changes > 0;
+  }
+
+  async getNotifications(userId: number): Promise<Notification[]> {
+    return db
+      .select()
+      .from(notifications)
+      .where(eq(notifications.userId, userId))
+      .orderBy(desc(notifications.createdAt))
+      .limit(50)
+      .all();
+  }
+
+  async getNotification(id: number): Promise<Notification | undefined> {
+    return db.select().from(notifications).where(eq(notifications.id, id)).get();
+  }
+
+  async createNotification(data: {
+    userId: number;
+    type: NotificationType;
+    taskId: number;
+    message: string;
+  }): Promise<Notification> {
+    return db
+      .insert(notifications)
+      .values({ ...data, read: false, createdAt: Date.now() })
+      .returning()
+      .get();
+  }
+
+  async markNotificationRead(id: number): Promise<Notification | undefined> {
+    return db
+      .update(notifications)
+      .set({ read: true })
+      .where(eq(notifications.id, id))
+      .returning()
+      .get();
+  }
+
+  async markAllNotificationsRead(userId: number): Promise<void> {
+    db.update(notifications).set({ read: true }).where(eq(notifications.userId, userId)).run();
+  }
+
+  async hasRecentDeadlineNotification(taskId: number, sinceMs: number): Promise<boolean> {
+    const rows = db
+      .select()
+      .from(notifications)
+      .where(and(eq(notifications.taskId, taskId), eq(notifications.type, "deadline")))
+      .all();
+    return rows.some((n) => n.createdAt >= sinceMs);
   }
 }
 

@@ -44,6 +44,7 @@ import { TaskCommentsDialog } from "@/components/task-comments-dialog";
 import { TaskChecklistDialog } from "@/components/task-checklist-dialog";
 import { TaskLabelsDialog } from "@/components/task-labels-dialog";
 import { AdminNav } from "@/components/admin-nav";
+import { NotificationBell } from "@/components/notification-bell";
 import {
   LayoutGrid,
   LogOut,
@@ -265,6 +266,12 @@ export default function Board() {
           </div>
           <div className="flex items-center gap-1 sm:gap-2 shrink-0">
             {isAdmin && <AdminNav />}
+            <NotificationBell
+              onOpenTask={(taskId) => {
+                const t = tasks.find((x) => x.id === taskId);
+                if (t) openEdit(t);
+              }}
+            />
             <Link href="/archive">
               <Button variant="ghost" size="icon" aria-label="Архив" data-testid="link-archive">
                 <Archive className="h-4 w-4" />

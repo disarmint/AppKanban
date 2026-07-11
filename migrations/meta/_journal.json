@@ -50,6 +50,13 @@
       "when": 1783784985948,
       "tag": "0006_add_archive_and_settings",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1783787892806,
+      "tag": "0007_add_notifications",
+      "breakpoints": true
     }
   ]
 }

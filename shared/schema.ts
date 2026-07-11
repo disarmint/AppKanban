@@ -173,6 +173,27 @@ export const updateLabelSchema = insertLabelSchema.partial().refine(
 
 export type Label = typeof labels.$inferSelect;
 
+// In-app notifications (no email/push). One row per event addressed to a user.
+export const NOTIFICATION_TYPES = ["comment", "assignment", "deadline"] as const;
+export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
+
+export const notifications = sqliteTable("notifications", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: integer("user_id")
+    .notNull()
+    .references(() => users.id),
+  type: text("type").notNull(),
+  taskId: integer("task_id")
+    .notNull()
+    .references(() => tasks.id),
+  // Pre-rendered Russian string shown verbatim in the UI.
+  message: text("message").notNull(),
+  read: integer("read", { mode: "boolean" }).notNull().default(false),
+  createdAt: integer("created_at").notNull(),
+});
+
+export type Notification = typeof notifications.$inferSelect;
+
 // Simple key/value store for app-wide admin settings (autoarchive threshold,
 // per-column WIP limits). Values are JSON-encoded strings.
 export const appSettings = sqliteTable("app_settings", {
