@@ -84,4 +84,24 @@ export type Task = typeof tasks.$inferSelect;
 export type TaskWithDepartment = Task & {
   department: Department;
   assignee: UserPublic | null;
+  commentCount: number;
 };
+
+export const taskComments = sqliteTable("task_comments", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  taskId: integer("task_id")
+    .notNull()
+    .references(() => tasks.id),
+  userId: integer("user_id")
+    .notNull()
+    .references(() => users.id),
+  body: text("body").notNull(),
+  createdAt: integer("created_at").notNull(),
+});
+
+export const insertCommentSchema = z.object({
+  body: z.string().min(1, "Введите комментарий").max(2000),
+});
+
+export type TaskComment = typeof taskComments.$inferSelect;
+export type CommentWithAuthor = TaskComment & { author: UserPublic | null };

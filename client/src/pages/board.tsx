@@ -27,6 +27,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { TaskDialog, type TaskFormValues } from "@/components/task-dialog";
+import { TaskCommentsDialog } from "@/components/task-comments-dialog";
 import { AdminNav } from "@/components/admin-nav";
 import {
   LayoutGrid,
@@ -37,6 +38,7 @@ import {
   Pencil,
   Trash2,
   Search,
+  MessageSquare,
 } from "lucide-react";
 import { STATUSES } from "@shared/schema";
 import { toIsoDate, daysOverdueFromIso, formatRuDate, parseIsoDate } from "@shared/ru-date";
@@ -58,6 +60,7 @@ export default function Board() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<TaskWithDepartment | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<TaskWithDepartment | null>(null);
+  const [commentsTask, setCommentsTask] = useState<TaskWithDepartment | null>(null);
   const [dragOverStatus, setDragOverStatus] = useState<string | null>(null);
 
   const isAdmin = user?.role === "admin";
@@ -353,6 +356,7 @@ export default function Board() {
                         task={task}
                         onEdit={() => openEdit(task)}
                         onDelete={() => setDeleteTarget(task)}
+                        onComments={() => setCommentsTask(task)}
                         onStatusChange={(status) =>
                           updateMutation.mutate({ id: task.id, values: { status } })
                         }
@@ -378,6 +382,12 @@ export default function Board() {
         task={editingTask}
         onSubmit={handleSubmit}
         isSubmitting={createMutation.isPending || updateMutation.isPending}
+      />
+
+      <TaskCommentsDialog
+        task={commentsTask}
+        open={!!commentsTask}
+        onOpenChange={(open) => !open && setCommentsTask(null)}
       />
 
       <AlertDialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
@@ -464,11 +474,13 @@ function TaskCard({
   task,
   onEdit,
   onDelete,
+  onComments,
   onStatusChange,
 }: {
   task: TaskWithDepartment;
   onEdit: () => void;
   onDelete: () => void;
+  onComments: () => void;
   onStatusChange: (status: string) => void;
 }) {
   return (
@@ -490,10 +502,26 @@ function TaskCard({
         >
           {task.department?.name}
         </Badge>
-        <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+        <div className="flex items-center gap-0.5">
+          <button
+            onClick={onComments}
+            className="relative p-1 rounded hover-elevate"
+            aria-label="Комментарии"
+            data-testid={`button-comments-${task.id}`}
+          >
+            <MessageSquare className="h-3.5 w-3.5" />
+            {task.commentCount > 0 && (
+              <span
+                className="absolute -top-1 -right-1 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-primary px-1 text-[9px] font-semibold text-primary-foreground"
+                data-testid={`comment-count-${task.id}`}
+              >
+                {task.commentCount}
+              </span>
+            )}
+          </button>
           <button
             onClick={onEdit}
-            className="p-1 rounded hover-elevate"
+            className="p-1 rounded hover-elevate opacity-0 group-hover:opacity-100 transition-opacity"
             aria-label="Редактировать"
             data-testid={`button-edit-${task.id}`}
           >
@@ -501,7 +529,7 @@ function TaskCard({
           </button>
           <button
             onClick={onDelete}
-            className="p-1 rounded hover-elevate text-destructive"
+            className="p-1 rounded hover-elevate text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
             aria-label="Удалить"
             data-testid={`button-delete-${task.id}`}
           >

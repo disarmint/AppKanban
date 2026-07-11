@@ -4,7 +4,7 @@ import type { Server } from "node:http";
 import { storage, hashPassword, verifyPassword, toPublicUser } from "./storage";
 import { seedDatabase, migrateLegacyPasswords, backfillDeadlineDates } from "./seed";
 import { createToken, destroyToken, requireAuth, requireAdmin, type SessionInfo } from "./auth";
-import { insertTaskSchema, updateTaskSchema, ROLES } from "@shared/schema";
+import { insertTaskSchema, updateTaskSchema, insertCommentSchema, ROLES } from "@shared/schema";
 import { parseIsoDate, formatRuDate } from "@shared/ru-date";
 import { z } from "zod";
 
@@ -338,6 +338,49 @@ export async function registerRoutes(
     if (!ok) {
       return res.status(404).json({ message: "Задача не найдена" });
     }
+    res.status(204).end();
+  });
+
+  // --- Comments ---
+  // Members may only touch comments on tasks in their own department.
+  async function canAccessTask(taskId: number, session: SessionInfo): Promise<boolean> {
+    if (session.role === "admin") return true;
+    const task = await storage.getTask(taskId);
+    return !!task && task.departmentId === session.departmentId;
+  }
+
+  app.get("/api/tasks/:id/comments", requireAuth, async (req, res) => {
+    const taskId = Number(req.params.id);
+    if (Number.isNaN(taskId)) return res.status(400).json({ message: "Некорректный id" });
+    if (!(await canAccessTask(taskId, req.session!))) {
+      return res.status(403).json({ message: "Нет доступа к задаче" });
+    }
+    res.json(await storage.getComments(taskId));
+  });
+
+  app.post("/api/tasks/:id/comments", requireAuth, async (req, res) => {
+    const taskId = Number(req.params.id);
+    if (Number.isNaN(taskId)) return res.status(400).json({ message: "Некорректный id" });
+    if (!(await canAccessTask(taskId, req.session!))) {
+      return res.status(403).json({ message: "Нет доступа к задаче" });
+    }
+    const parsed = insertCommentSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: "Введите комментарий" });
+    const comment = await storage.createComment(taskId, req.session!.userId, parsed.data.body);
+    const [withAuthor] = (await storage.getComments(taskId)).filter((c) => c.id === comment.id);
+    res.status(201).json(withAuthor ?? comment);
+  });
+
+  // Comments can be removed by their author or an admin (no editing others').
+  app.delete("/api/comments/:id", requireAuth, async (req, res) => {
+    const id = Number(req.params.id);
+    if (Number.isNaN(id)) return res.status(400).json({ message: "Некорректный id" });
+    const comment = await storage.getComment(id);
+    if (!comment) return res.status(404).json({ message: "Комментарий не найден" });
+    if (req.session!.role !== "admin" && comment.userId !== req.session!.userId) {
+      return res.status(403).json({ message: "Можно удалять только свои комментарии" });
+    }
+    await storage.deleteComment(id);
     res.status(204).end();
   });
 

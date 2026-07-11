@@ -1,4 +1,4 @@
-import { users, departments, tasks } from "@shared/schema";
+import { users, departments, tasks, taskComments } from "@shared/schema";
 import type {
   User,
   UserPublic,
@@ -10,6 +10,8 @@ import type {
   InsertTask,
   UpdateTask,
   TaskWithDepartment,
+  TaskComment,
+  CommentWithAuthor,
 } from "@shared/schema";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import Database from "better-sqlite3";
@@ -74,6 +76,11 @@ export interface IStorage {
   createTask(task: InsertTask): Promise<Task>;
   updateTask(id: number, task: UpdateTask): Promise<Task | undefined>;
   deleteTask(id: number): Promise<boolean>;
+
+  getComments(taskId: number): Promise<CommentWithAuthor[]>;
+  getComment(id: number): Promise<TaskComment | undefined>;
+  createComment(taskId: number, userId: number, body: string): Promise<TaskComment>;
+  deleteComment(id: number): Promise<boolean>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -141,11 +148,45 @@ export class DatabaseStorage implements IStorage {
     const deptMap = new Map(depts.map((d) => [d.id, d]));
     const userList = db.select().from(users).all();
     const userMap = new Map(userList.map((u) => [u.id, toPublicUser(u)]));
+    const commentRows = db.select().from(taskComments).all();
+    const countByTask = new Map<number, number>();
+    for (const c of commentRows) {
+      countByTask.set(c.taskId, (countByTask.get(c.taskId) ?? 0) + 1);
+    }
     return rows.map((t) => ({
       ...t,
       department: deptMap.get(t.departmentId)!,
       assignee: t.assigneeId ? userMap.get(t.assigneeId) ?? null : null,
+      commentCount: countByTask.get(t.id) ?? 0,
     }));
+  }
+
+  async getComments(taskId: number): Promise<CommentWithAuthor[]> {
+    const rows = db
+      .select()
+      .from(taskComments)
+      .where(eq(taskComments.taskId, taskId))
+      .all()
+      .sort((a, b) => a.createdAt - b.createdAt);
+    const userList = db.select().from(users).all();
+    const userMap = new Map(userList.map((u) => [u.id, toPublicUser(u)]));
+    return rows.map((c) => ({ ...c, author: userMap.get(c.userId) ?? null }));
+  }
+
+  async getComment(id: number): Promise<TaskComment | undefined> {
+    return db.select().from(taskComments).where(eq(taskComments.id, id)).get();
+  }
+
+  async createComment(taskId: number, userId: number, body: string): Promise<TaskComment> {
+    return db
+      .insert(taskComments)
+      .values({ taskId, userId, body, createdAt: Date.now() })
+      .returning()
+      .get();
+  }
+
+  async deleteComment(id: number): Promise<boolean> {
+    return db.delete(taskComments).where(eq(taskComments.id, id)).run().changes > 0;
   }
 
   async createTask(task: InsertTask): Promise<Task> {
@@ -157,6 +198,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async deleteTask(id: number): Promise<boolean> {
+    db.delete(taskComments).where(eq(taskComments.taskId, id)).run();
     const result = db.delete(tasks).where(eq(tasks.id, id)).run();
     return result.changes > 0;
   }
