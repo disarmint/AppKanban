@@ -231,6 +231,30 @@
     @apply hidden;
   }
 
+  /* Scroll affordance for horizontal overflow rows: fade the edge(s) that have
+   * hidden content. Uses a scroll-driven animation to interpolate the mask so
+   * the right edge fades at scroll start, the left edge fades at scroll end,
+   * and both fade mid-scroll. Purely visual — does not affect scroll behaviour.
+   * The pr utility on the element keeps the last item clear of the fade. */
+  .scroll-fade-x {
+    animation: scroll-fade-x linear both;
+    animation-timeline: scroll(self inline);
+  }
+}
+
+@keyframes scroll-fade-x {
+  from {
+    -webkit-mask-image: linear-gradient(to right, #000 0%, #000 calc(100% - 24px), transparent 100%);
+    mask-image: linear-gradient(to right, #000 0%, #000 calc(100% - 24px), transparent 100%);
+  }
+  to {
+    -webkit-mask-image: linear-gradient(to right, transparent 0%, #000 24px, #000 100%);
+    mask-image: linear-gradient(to right, transparent 0%, #000 24px, #000 100%);
+  }
+}
+
+@layer utilities {
+
   /* Placeholder styling for contentEditable div */
   [contenteditable][data-placeholder]:empty::before {
     content: attr(data-placeholder);

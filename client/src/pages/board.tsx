@@ -326,7 +326,7 @@ export default function Board() {
       <main className="max-w-7xl mx-auto px-4 md:px-6 py-6 space-y-6">
         {/* Roadmap strip */}
         {!loadingDepartments && departments.length > 0 && (
-          <div className="flex gap-2 overflow-x-auto pb-1" data-testid="roadmap-strip">
+          <div className="flex gap-2 overflow-x-auto pb-1 pr-6 scroll-fade-x" data-testid="roadmap-strip">
             {departments.map((d) => (
               <div
                 key={d.id}
@@ -369,7 +369,7 @@ export default function Board() {
             />
           </div>
           {isAdmin && (
-            <div className="flex gap-2 overflow-x-auto flex-1">
+            <div className="flex gap-2 overflow-x-auto flex-1 pr-6 scroll-fade-x">
               {departments.map((d) => {
                 const active = activeDepartments.has(d.id);
                 return (
@@ -398,7 +398,7 @@ export default function Board() {
         </div>
 
         {labels.length > 0 && (
-          <div className="flex gap-2 overflow-x-auto" data-testid="label-filter">
+          <div className="flex gap-2 overflow-x-auto pr-6 scroll-fade-x" data-testid="label-filter">
             {labels.map((l) => {
               const active = activeLabels.has(l.id);
               return (
@@ -419,7 +419,7 @@ export default function Board() {
           </div>
         )}
 
-        <div className="flex gap-2 overflow-x-auto" data-testid="priority-filter">
+        <div className="flex gap-2 overflow-x-auto pr-6 scroll-fade-x" data-testid="priority-filter">
           {PRIORITIES.map((p) => {
             const active = activePriorities.has(p);
             const meta = PRIORITY_META[p];
