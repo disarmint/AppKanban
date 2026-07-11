@@ -37,7 +37,7 @@ import { Calendar } from "@/components/ui/calendar";
 import { cn } from "@/lib/utils";
 import { CalendarIcon, Loader2 } from "lucide-react";
 import { STATUSES, PRIORITIES } from "@shared/schema";
-import { formatRuDate, parseIsoDate } from "@shared/ru-date";
+import { formatRuDate, parseIsoDate, daysOverdueFromIso } from "@shared/ru-date";
 import type { Department, TaskWithDepartment, UserPublic, Priority } from "@shared/schema";
 
 const UNASSIGNED = "none";
@@ -93,6 +93,14 @@ export function TaskDialog({
 }) {
   const isCreate = !task;
   const resolver = useMemo(() => zodResolver(makeTaskSchema(isCreate)), [isCreate]);
+
+  const overdueDays = task ? daysOverdueFromIso(task.deadlineDate) : null;
+  const taskOverdue =
+    !!task &&
+    overdueDays !== null &&
+    overdueDays > 0 &&
+    task.status !== "Завершено" &&
+    !task.archived;
   const form = useForm<TaskFormValues>({
     resolver,
     defaultValues: {
@@ -244,6 +252,14 @@ export function TaskDialog({
                       </PopoverContent>
                     </Popover>
                     <FormMessage />
+                    {taskOverdue && (
+                      <p
+                        className="text-xs font-medium text-destructive"
+                        data-testid="text-task-overdue"
+                      >
+                        Задача просрочена на {overdueDays} дн.
+                      </p>
+                    )}
                   </FormItem>
                 )}
               />

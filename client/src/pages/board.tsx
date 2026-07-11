@@ -734,6 +734,11 @@ function TaskCardView({
       ? Math.floor((Date.now() - task.statusChangedAt) / 86_400_000)
       : 0;
   const isStale = staleDays > 0 && staleFor > staleDays;
+  // Overdue = deadline strictly in the past, task not completed and not archived.
+  // This is distinct from the "stale" clock (which is about status inactivity).
+  const overdueDays = daysOverdueFromIso(task.deadlineDate);
+  const isOverdue =
+    overdueDays !== null && overdueDays > 0 && task.status !== "Завершено" && !task.archived;
   return (
     <Card
       ref={dragRef}
@@ -866,6 +871,16 @@ function TaskCardView({
             {task.week}
           </Badge>
           <DeadlineBadge task={task} />
+          {isOverdue && (
+            <span
+              className="inline-flex items-center gap-1 rounded-md bg-destructive px-1.5 py-0 text-[10px] font-semibold text-destructive-foreground"
+              data-testid={`overdue-badge-${task.id}`}
+              title={`Просрочено на ${overdueDays} дн.`}
+            >
+              <AlertTriangle className="h-3 w-3" />
+              Просрочено
+            </span>
+          )}
           <button
             onClick={onChecklist}
             {...stop}
