@@ -1,4 +1,17 @@
 import { useMemo, useState } from "react";
+import {
+  DndContext,
+  DragOverlay,
+  PointerSensor,
+  TouchSensor,
+  KeyboardSensor,
+  useSensor,
+  useSensors,
+  useDraggable,
+  useDroppable,
+  type DragStartEvent,
+  type DragEndEvent,
+} from "@dnd-kit/core";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useAuth } from "@/lib/auth-context";
@@ -71,9 +84,17 @@ export default function Board() {
   const [checklistTask, setChecklistTask] = useState<TaskWithDepartment | null>(null);
   const [labelsTask, setLabelsTask] = useState<TaskWithDepartment | null>(null);
   const [activeLabels, setActiveLabels] = useState<Set<number>>(new Set());
-  const [dragOverStatus, setDragOverStatus] = useState<string | null>(null);
+  const [activeDragId, setActiveDragId] = useState<number | null>(null);
 
   const isAdmin = user?.role === "admin";
+
+  // Pointer/touch drag only kicks in after a small movement so taps on the
+  // card's buttons and status dropdown still work (accessible alternative).
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 150, tolerance: 6 } }),
+    useSensor(KeyboardSensor)
+  );
 
   const { data: departments = [], isLoading: loadingDepartments } = useQuery<Department[]>({
     queryKey: ["/api/departments"],
@@ -193,16 +214,17 @@ export default function Board() {
     });
   }
 
-  function handleDrop(status: string, e: React.DragEvent) {
-    e.preventDefault();
-    setDragOverStatus(null);
-    const idStr = e.dataTransfer.getData("text/task-id");
-    if (!idStr) return;
-    const id = Number(idStr);
+  function handleDragEnd(e: DragEndEvent) {
+    setActiveDragId(null);
+    const status = e.over?.id;
+    if (typeof status !== "string") return;
+    const id = Number(e.active.id);
     const task = tasks.find((t) => t.id === id);
     if (!task || task.status === status) return;
     updateMutation.mutate({ id, values: { status } });
   }
+
+  const activeDragTask = activeDragId !== null ? tasks.find((t) => t.id === activeDragId) ?? null : null;
 
   function openCreate() {
     setEditingTask(null);
@@ -376,71 +398,67 @@ export default function Board() {
             ))}
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {STATUS_COLUMNS.map((col) => {
-              const colTasks = filteredTasks.filter((t) => t.status === col.status);
-              const limit = config?.wipLimits?.[col.status] ?? null;
-              const overLimit = limit !== null && limit > 0 && colTasks.length > limit;
-              return (
-                <div
-                  key={col.status}
-                  onDragOver={(e) => {
-                    e.preventDefault();
-                    setDragOverStatus(col.status);
-                  }}
-                  onDragLeave={() => setDragOverStatus(null)}
-                  onDrop={(e) => handleDrop(col.status, e)}
-                  className={`rounded-lg border bg-muted/40 p-3 flex flex-col gap-3 min-h-[200px] transition-colors ${
-                    dragOverStatus === col.status
-                      ? "ring-2 ring-primary"
-                      : overLimit
-                        ? "ring-2 ring-destructive"
-                        : ""
-                  }`}
-                  data-testid={`column-${col.status}`}
-                >
-                  <div className="flex items-center justify-between px-1">
-                    <h2 className="text-sm font-semibold flex items-center gap-1.5">
-                      {col.label}
-                      {overLimit && (
-                        <AlertTriangle
-                          className="h-3.5 w-3.5 text-destructive"
-                          data-testid={`wip-warning-${col.status}`}
-                        />
+          <DndContext
+            sensors={sensors}
+            onDragStart={(e: DragStartEvent) => setActiveDragId(Number(e.active.id))}
+            onDragEnd={handleDragEnd}
+            onDragCancel={() => setActiveDragId(null)}
+          >
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {STATUS_COLUMNS.map((col) => {
+                const colTasks = filteredTasks.filter((t) => t.status === col.status);
+                const limit = config?.wipLimits?.[col.status] ?? null;
+                const overLimit = limit !== null && limit > 0 && colTasks.length > limit;
+                return (
+                  <BoardColumn key={col.status} status={col.status} overLimit={overLimit}>
+                    <div className="flex items-center justify-between px-1">
+                      <h2 className="text-sm font-semibold flex items-center gap-1.5">
+                        {col.label}
+                        {overLimit && (
+                          <AlertTriangle
+                            className="h-3.5 w-3.5 text-destructive"
+                            data-testid={`wip-warning-${col.status}`}
+                          />
+                        )}
+                      </h2>
+                      <Badge
+                        variant={overLimit ? "destructive" : "secondary"}
+                        data-testid={`count-${col.status}`}
+                      >
+                        {limit !== null && limit > 0 ? `${colTasks.length}/${limit}` : colTasks.length}
+                      </Badge>
+                    </div>
+                    <div className="flex flex-col gap-2 max-h-[65vh] overflow-y-auto pr-0.5">
+                      {colTasks.length === 0 && (
+                        <p className="text-xs text-muted-foreground px-1 py-4 text-center">
+                          Нет задач
+                        </p>
                       )}
-                    </h2>
-                    <Badge
-                      variant={overLimit ? "destructive" : "secondary"}
-                      data-testid={`count-${col.status}`}
-                    >
-                      {limit !== null && limit > 0 ? `${colTasks.length}/${limit}` : colTasks.length}
-                    </Badge>
-                  </div>
-                  <div className="flex flex-col gap-2 max-h-[65vh] overflow-y-auto pr-0.5">
-                    {colTasks.length === 0 && (
-                      <p className="text-xs text-muted-foreground px-1 py-4 text-center">
-                        Нет задач
-                      </p>
-                    )}
-                    {colTasks.map((task) => (
-                      <TaskCard
-                        key={task.id}
-                        task={task}
-                        onEdit={() => openEdit(task)}
-                        onDelete={() => setDeleteTarget(task)}
-                        onComments={() => setCommentsTask(task)}
-                        onChecklist={() => setChecklistTask(task)}
-                        onLabels={() => setLabelsTask(task)}
-                        onStatusChange={(status) =>
-                          updateMutation.mutate({ id: task.id, values: { status } })
-                        }
-                      />
-                    ))}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+                      {colTasks.map((task) => (
+                        <TaskCard
+                          key={task.id}
+                          task={task}
+                          onEdit={() => openEdit(task)}
+                          onDelete={() => setDeleteTarget(task)}
+                          onComments={() => setCommentsTask(task)}
+                          onChecklist={() => setChecklistTask(task)}
+                          onLabels={() => setLabelsTask(task)}
+                          onStatusChange={(status) =>
+                            updateMutation.mutate({ id: task.id, values: { status } })
+                          }
+                        />
+                      ))}
+                    </div>
+                  </BoardColumn>
+                );
+              })}
+            </div>
+            <DragOverlay>
+              {activeDragTask ? (
+                <TaskCardView task={activeDragTask} {...NOOP_HANDLERS} />
+              ) : null}
+            </DragOverlay>
+          </DndContext>
         )}
       </main>
 
@@ -556,7 +574,62 @@ function DeadlineBadge({ task }: { task: TaskWithDepartment }) {
   );
 }
 
-function TaskCard({
+function BoardColumn({
+  status,
+  overLimit,
+  children,
+}: {
+  status: string;
+  overLimit: boolean;
+  children: React.ReactNode;
+}) {
+  const { setNodeRef, isOver } = useDroppable({ id: status });
+  return (
+    <div
+      ref={setNodeRef}
+      className={`rounded-lg border bg-muted/40 p-3 flex flex-col gap-3 min-h-[200px] transition-colors ${
+        isOver ? "ring-2 ring-primary" : overLimit ? "ring-2 ring-destructive" : ""
+      }`}
+      data-testid={`column-${status}`}
+    >
+      {children}
+    </div>
+  );
+}
+
+type TaskCardHandlers = {
+  onEdit: () => void;
+  onDelete: () => void;
+  onComments: () => void;
+  onChecklist: () => void;
+  onLabels: () => void;
+  onStatusChange: (status: string) => void;
+};
+
+const NOOP_HANDLERS: TaskCardHandlers = {
+  onEdit: () => {},
+  onDelete: () => {},
+  onComments: () => {},
+  onChecklist: () => {},
+  onLabels: () => {},
+  onStatusChange: () => {},
+};
+
+function TaskCard(props: { task: TaskWithDepartment } & TaskCardHandlers) {
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+    id: props.task.id,
+  });
+  return (
+    <TaskCardView
+      {...props}
+      dragRef={setNodeRef}
+      dragProps={{ ...attributes, ...listeners }}
+      isDragging={isDragging}
+    />
+  );
+}
+
+function TaskCardView({
   task,
   onEdit,
   onDelete,
@@ -564,22 +637,25 @@ function TaskCard({
   onChecklist,
   onLabels,
   onStatusChange,
+  dragRef,
+  dragProps,
+  isDragging,
 }: {
   task: TaskWithDepartment;
-  onEdit: () => void;
-  onDelete: () => void;
-  onComments: () => void;
-  onChecklist: () => void;
-  onLabels: () => void;
-  onStatusChange: (status: string) => void;
-}) {
+  dragRef?: (el: HTMLElement | null) => void;
+  dragProps?: Record<string, unknown>;
+  isDragging?: boolean;
+} & TaskCardHandlers) {
+  // Interactive controls stop pointer propagation so tapping them never starts
+  // a drag — the status dropdown stays a keyboard/click-accessible alternative.
+  const stop = { onPointerDown: (e: React.PointerEvent) => e.stopPropagation() };
   return (
     <Card
-      draggable
-      onDragStart={(e) => {
-        e.dataTransfer.setData("text/task-id", String(task.id));
-      }}
-      className="group p-3 cursor-grab active:cursor-grabbing border-l-[3px]"
+      ref={dragRef}
+      {...(dragProps ?? {})}
+      className={`group p-3 cursor-grab active:cursor-grabbing border-l-[3px] touch-none ${
+        isDragging ? "opacity-40" : ""
+      }`}
       style={{ borderLeftColor: task.department?.color }}
       data-testid={`card-task-${task.id}`}
     >
@@ -592,7 +668,7 @@ function TaskCard({
         >
           {task.department?.name}
         </Badge>
-        <div className="flex items-center gap-0.5">
+        <div className="flex items-center gap-0.5" {...stop}>
           <button
             onClick={onComments}
             className="relative p-1 rounded hover-elevate"
@@ -662,6 +738,7 @@ function TaskCard({
           <DeadlineBadge task={task} />
           <button
             onClick={onChecklist}
+            {...stop}
             className="inline-flex items-center gap-1 rounded-md bg-muted px-1.5 py-0 text-[10px] font-medium text-muted-foreground hover-elevate"
             data-testid={`checklist-count-${task.id}`}
           >
@@ -681,6 +758,7 @@ function TaskCard({
       </div>
       <Select value={task.status} onValueChange={onStatusChange}>
         <SelectTrigger
+          {...stop}
           className="mt-2 h-7 text-xs"
           data-testid={`select-status-${task.id}`}
         >
