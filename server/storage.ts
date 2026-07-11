@@ -15,53 +15,16 @@ import { drizzle } from "drizzle-orm/better-sqlite3";
 import Database from "better-sqlite3";
 import { eq } from "drizzle-orm";
 import crypto from "node:crypto";
+import { initDatabase } from "./db-init";
 
 const sqlite = new Database("data.db");
-sqlite.pragma("journal_mode = WAL");
+
+// Schema is owned by shared/schema.ts (Drizzle) and materialized into
+// ./migrations. initDatabase applies those migrations (and sets the WAL +
+// foreign_keys pragmas). No raw CREATE TABLE / ALTER lives here anymore.
+initDatabase(sqlite);
 
 export const db = drizzle(sqlite);
-
-sqlite.exec(`
-  CREATE TABLE IF NOT EXISTS users (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    username TEXT NOT NULL UNIQUE,
-    password_hash TEXT NOT NULL,
-    role TEXT NOT NULL DEFAULT 'member',
-    department_id INTEGER,
-    must_change_password INTEGER NOT NULL DEFAULT 0
-  );
-  CREATE TABLE IF NOT EXISTS departments (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL UNIQUE,
-    color TEXT NOT NULL,
-    order_index INTEGER NOT NULL,
-    roadmap_period TEXT NOT NULL,
-    roadmap_status TEXT NOT NULL
-  );
-  CREATE TABLE IF NOT EXISTS tasks (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    department_id INTEGER NOT NULL REFERENCES departments(id),
-    goal TEXT NOT NULL,
-    title TEXT NOT NULL,
-    week TEXT NOT NULL,
-    deadline TEXT NOT NULL,
-    status TEXT NOT NULL DEFAULT 'Запланировано'
-  );
-`);
-
-// Migration guard: add columns to a users table created before roles existed.
-const userColumns = sqlite.prepare("PRAGMA table_info(users)").all() as { name: string }[];
-const userColumnNames = new Set(userColumns.map((c) => c.name));
-if (!userColumnNames.has("role")) {
-  sqlite.exec("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'member'");
-  sqlite.exec("UPDATE users SET role = 'admin' WHERE username = 'admin'");
-}
-if (!userColumnNames.has("department_id")) {
-  sqlite.exec("ALTER TABLE users ADD COLUMN department_id INTEGER");
-}
-if (!userColumnNames.has("must_change_password")) {
-  sqlite.exec("ALTER TABLE users ADD COLUMN must_change_password INTEGER NOT NULL DEFAULT 0");
-}
 
 // Password hashing: scrypt with a per-user random salt.
 // Stored format: "scrypt$<saltHex>$<hashHex>". Legacy hashes (bare sha256 hex,
