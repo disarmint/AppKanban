@@ -62,9 +62,9 @@ export const tasks = sqliteTable("tasks", {
   status: text("status").notNull().default("Запланировано"),
 });
 
-export const insertTaskSchema = createInsertSchema(tasks).omit({
-  id: true,
-});
+export const insertTaskSchema = createInsertSchema(tasks)
+  .omit({ id: true })
+  .extend({ status: z.enum(STATUSES).default("Запланировано") });
 
 export const updateTaskSchema = insertTaskSchema.partial();
 
