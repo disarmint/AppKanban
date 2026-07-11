@@ -390,6 +390,7 @@ export class DatabaseStorage implements IStorage {
     return {
       archiveDays: parseNum(map.get("archiveDays"), 30),
       staleDays: parseNum(map.get("staleDays"), 14),
+      overloadThreshold: parseNum(map.get("overloadThreshold"), 8),
       wipLimits,
     };
   }
@@ -403,6 +404,8 @@ export class DatabaseStorage implements IStorage {
         .run();
     if (patch.archiveDays !== undefined) write("archiveDays", String(patch.archiveDays));
     if (patch.staleDays !== undefined) write("staleDays", String(patch.staleDays));
+    if (patch.overloadThreshold !== undefined)
+      write("overloadThreshold", String(patch.overloadThreshold));
     if (patch.wipLimits !== undefined) write("wipLimits", JSON.stringify(patch.wipLimits));
     return this.getConfig();
   }

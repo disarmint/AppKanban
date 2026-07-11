@@ -17,6 +17,7 @@ import Archive from "@/pages/archive";
 import CalendarPage from "@/pages/calendar";
 import Settings from "@/pages/settings";
 import Reports from "@/pages/reports";
+import WeeklySummary from "@/pages/weekly-summary";
 
 function ProtectedRoute({ component: Component }: { component: () => JSX.Element }) {
   const { isAuthenticated } = useAuth();
@@ -58,6 +59,9 @@ function AppRouter() {
       </Route>
       <Route path="/reports">
         <AdminRoute component={Reports} />
+      </Route>
+      <Route path="/weekly-summary">
+        <AdminRoute component={WeeklySummary} />
       </Route>
       <Route path="/departments">
         <AdminRoute component={Departments} />

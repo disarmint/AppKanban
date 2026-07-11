@@ -1,12 +1,13 @@
 import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
-import { Users, Building2, BarChart3, FileSpreadsheet, Settings } from "lucide-react";
+import { Users, Building2, BarChart3, FileSpreadsheet, Settings, ClipboardList } from "lucide-react";
 
 const ITEMS = [
   { href: "/users", icon: Users, label: "Пользователи", testId: "link-users" },
   { href: "/departments", icon: Building2, label: "Отделы", testId: "link-departments" },
   { href: "/analytics", icon: BarChart3, label: "Аналитика", testId: "link-analytics" },
   { href: "/reports", icon: FileSpreadsheet, label: "Отчёты", testId: "link-reports" },
+  { href: "/weekly-summary", icon: ClipboardList, label: "Сводка", testId: "link-weekly-summary" },
   { href: "/settings", icon: Settings, label: "Настройки", testId: "link-settings" },
 ];
 

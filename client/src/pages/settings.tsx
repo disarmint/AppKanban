@@ -19,6 +19,7 @@ export default function Settings() {
 
   const [archiveDays, setArchiveDays] = useState("30");
   const [staleDays, setStaleDays] = useState("14");
+  const [overloadThreshold, setOverloadThreshold] = useState("8");
   const [wip, setWip] = useState<Record<string, string>>({});
   const [downloading, setDownloading] = useState(false);
 
@@ -26,6 +27,7 @@ export default function Settings() {
     if (!config) return;
     setArchiveDays(String(config.archiveDays));
     setStaleDays(String(config.staleDays));
+    setOverloadThreshold(String(config.overloadThreshold));
     const next: Record<string, string> = {};
     for (const s of STATUSES) {
       const v = config.wipLimits?.[s];
@@ -44,6 +46,7 @@ export default function Settings() {
       const res = await apiRequest("PUT", "/api/config", {
         archiveDays: Number(archiveDays) || 0,
         staleDays: Number(staleDays) || 0,
+        overloadThreshold: Number(overloadThreshold) || 8,
         wipLimits,
       });
       return res.json();
@@ -150,6 +153,29 @@ export default function Settings() {
                     value={staleDays}
                     onChange={(e) => setStaleDays(e.target.value)}
                     data-testid="input-stale-days"
+                  />
+                </div>
+              </div>
+            </Card>
+
+            <Card className="p-4 space-y-3">
+              <h2 className="text-sm font-semibold">Порог перегрузки сотрудника</h2>
+              <p className="text-xs text-muted-foreground">
+                Если у сотрудника больше указанного числа активных задач, в
+                еженедельной сводке он помечается как перегруженный.
+              </p>
+              <div className="flex items-end gap-2 max-w-xs">
+                <div className="flex-1">
+                  <FieldLabel htmlFor="overload-threshold" className="text-xs">
+                    Порог перегрузки сотрудника (задач)
+                  </FieldLabel>
+                  <Input
+                    id="overload-threshold"
+                    type="number"
+                    min={1}
+                    value={overloadThreshold}
+                    onChange={(e) => setOverloadThreshold(e.target.value)}
+                    data-testid="input-overload-threshold"
                   />
                 </div>
               </div>

@@ -240,11 +240,13 @@ export type AppSetting = typeof appSettings.$inferSelect;
 export type AppConfig = {
   archiveDays: number;
   staleDays: number;
+  overloadThreshold: number;
   wipLimits: Record<string, number | null>;
 };
 
 export const updateConfigSchema = z.object({
   archiveDays: z.number().int().min(0).max(3650).optional(),
   staleDays: z.number().int().min(0).max(3650).optional(),
+  overloadThreshold: z.number().int().min(1).max(1000).optional(),
   wipLimits: z.record(z.string(), z.number().int().min(0).nullable()).optional(),
 });

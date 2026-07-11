@@ -17,7 +17,7 @@ import {
   updateConfigSchema,
   ROLES,
 } from "@shared/schema";
-import { parseIsoDate, formatRuDate } from "@shared/ru-date";
+import { parseIsoDate, formatRuDate, toIsoDate } from "@shared/ru-date";
 import { z } from "zod";
 import ExcelJS from "exceljs";
 import multer from "multer";
@@ -55,6 +55,27 @@ async function completedInRange(fromIso?: string, toIso?: string) {
     .filter((t) => t.status === "Завершено" && t.completedAt !== null)
     .filter((t) => (from === undefined || t.completedAt! >= from) && (to === undefined || t.completedAt! <= to))
     .sort((a, b) => (a.completedAt ?? 0) - (b.completedAt ?? 0));
+}
+
+// Monday-anchored week that contains `ref` (default now). Returns local-midnight
+// bounds and their ISO labels. If weekStartIso is supplied it is normalized to
+// the Monday of that date's week.
+function weekBounds(weekStartIso?: string): {
+  start: Date;
+  end: Date;
+  weekStart: string;
+  weekEnd: string;
+} {
+  const ref = (weekStartIso ? parseIsoDate(weekStartIso) : null) ?? new Date();
+  const start = new Date(ref);
+  start.setHours(0, 0, 0, 0);
+  // getDay(): 0=Sun..6=Sat. Shift back to Monday.
+  const dow = (start.getDay() + 6) % 7;
+  start.setDate(start.getDate() - dow);
+  const end = new Date(start);
+  end.setDate(start.getDate() + 6);
+  end.setHours(23, 59, 59, 999);
+  return { start, end, weekStart: toIsoDate(start), weekEnd: toIsoDate(end) };
 }
 
 const reportRangeSchema = z.object({
@@ -455,6 +476,91 @@ export async function registerRoutes(
     if (!parsed.success) return res.status(400).json({ message: "Некорректные настройки" });
     const config = await storage.setConfig(parsed.data);
     res.json(config);
+  });
+
+  // --- Weekly summary (admin only): team-wide view shown inside the app ---
+  app.get("/api/weekly-summary", requireAuth, requireAdmin, async (req, res) => {
+    const rawWeekStart = typeof req.query.weekStart === "string" ? req.query.weekStart : undefined;
+    if (rawWeekStart !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(rawWeekStart)) {
+      return res.status(400).json({ message: "Некорректная дата недели" });
+    }
+    const { start, end, weekStart, weekEnd } = weekBounds(rawWeekStart);
+    const config = await storage.getConfig();
+    const overloadThreshold = config.overloadThreshold;
+
+    const tasks = await storage.getTasks();
+    const departments = await storage.getDepartments();
+    const users = await storage.getUsers();
+
+    const startMs = start.getTime();
+    const endMs = end.getTime();
+
+    // Completed within the week, grouped by department.
+    const completedByDeptMap = new Map<number, number>();
+    let completedCount = 0;
+    for (const t of tasks) {
+      if (t.status !== "Завершено" || t.completedAt === null) continue;
+      if (t.completedAt < startMs || t.completedAt > endMs) continue;
+      completedCount++;
+      completedByDeptMap.set(t.departmentId, (completedByDeptMap.get(t.departmentId) ?? 0) + 1);
+    }
+    const completedByDepartment = departments
+      .filter((d) => completedByDeptMap.has(d.id))
+      .map((d) => ({ departmentName: d.name, count: completedByDeptMap.get(d.id)! }));
+
+    // All currently-overdue, non-archived, non-completed tasks (point-in-time).
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const todayMs = today.getTime();
+    const overdueList = tasks
+      .filter((t) => {
+        if (t.archived || t.status === "Завершено") return false;
+        const d = parseIsoDate(t.deadlineDate);
+        return d !== null && d.getTime() < todayMs;
+      })
+      .map((t) => {
+        const d = parseIsoDate(t.deadlineDate)!;
+        return {
+          taskId: t.id,
+          title: t.title,
+          departmentName: t.department?.name ?? "",
+          assigneeName: t.assignee?.username ?? null,
+          deadlineDate: t.deadlineDate,
+          daysOverdue: Math.round((todayMs - d.getTime()) / 86_400_000),
+        };
+      })
+      .sort((a, b) => b.daysOverdue - a.daysOverdue);
+
+    // Workload: users with assigned active (non-completed, non-archived) tasks.
+    const activeByUser = new Map<number, number>();
+    const overdueByUser = new Map<number, number>();
+    for (const t of tasks) {
+      if (t.archived || t.status === "Завершено" || t.assigneeId === null) continue;
+      activeByUser.set(t.assigneeId, (activeByUser.get(t.assigneeId) ?? 0) + 1);
+      const d = parseIsoDate(t.deadlineDate);
+      if (d !== null && d.getTime() < todayMs) {
+        overdueByUser.set(t.assigneeId, (overdueByUser.get(t.assigneeId) ?? 0) + 1);
+      }
+    }
+    const userMap = new Map(users.map((u) => [u.id, u]));
+    const workloadByAssignee = Array.from(activeByUser.entries())
+      .map(([userId, activeTaskCount]) => ({
+        userId,
+        username: userMap.get(userId)?.username ?? `#${userId}`,
+        activeTaskCount,
+        overdueTaskCount: overdueByUser.get(userId) ?? 0,
+      }))
+      .sort((a, b) => b.activeTaskCount - a.activeTaskCount);
+
+    res.json({
+      weekStart,
+      weekEnd,
+      overloadThreshold,
+      completedCount,
+      completedByDepartment,
+      overdueList,
+      workloadByAssignee,
+    });
   });
 
   // --- Backup (admin only): a consistent SQLite snapshot download ---
