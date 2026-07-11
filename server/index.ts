@@ -46,12 +46,19 @@ app.use((req, res, next) => {
     return originalResJson.apply(res, [bodyJson, ...args]);
   };
 
+  // Endpoints whose response bodies contain secrets (tokens) must never be
+  // logged in full.
+  const SENSITIVE_PATHS = new Set(["/api/login", "/api/change-password"]);
+
   res.on("finish", () => {
     const duration = Date.now() - start;
     if (path.startsWith("/api")) {
       let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
-      if (capturedJsonResponse) {
-        logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
+      if (capturedJsonResponse && !SENSITIVE_PATHS.has(path)) {
+        const safe = { ...capturedJsonResponse };
+        if ("token" in safe) safe.token = "[redacted]";
+        if ("password" in safe) safe.password = "[redacted]";
+        logLine += ` :: ${JSON.stringify(safe)}`;
       }
 
       log(logLine);
