@@ -63,6 +63,7 @@ export const tasks = sqliteTable("tasks", {
   // legacy free-text `deadline` may not be parseable. `deadline` is kept as the
   // human-facing label; `deadlineDate` drives sorting and urgency colors.
   deadlineDate: text("deadline_date"),
+  assigneeId: integer("assignee_id").references(() => users.id),
   status: text("status").notNull().default("Запланировано"),
 });
 
@@ -71,6 +72,7 @@ export const insertTaskSchema = createInsertSchema(tasks)
   .extend({
     status: z.enum(STATUSES).default("Запланировано"),
     deadlineDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Неверная дата").nullable().optional(),
+    assigneeId: z.number().nullable().optional(),
   });
 
 export const updateTaskSchema = insertTaskSchema.partial();
@@ -81,4 +83,5 @@ export type Task = typeof tasks.$inferSelect;
 
 export type TaskWithDepartment = Task & {
   department: Department;
+  assignee: UserPublic | null;
 };

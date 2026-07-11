@@ -38,7 +38,7 @@ import { cn } from "@/lib/utils";
 import { CalendarIcon, Loader2 } from "lucide-react";
 import { STATUSES } from "@shared/schema";
 import { formatRuDate, parseIsoDate } from "@shared/ru-date";
-import type { Department, TaskWithDepartment } from "@shared/schema";
+import type { Department, TaskWithDepartment, UserPublic } from "@shared/schema";
 
 const taskFormSchema = z.object({
   departmentId: z.string().min(1, "Выберите отдел"),
@@ -46,8 +46,11 @@ const taskFormSchema = z.object({
   goal: z.string().min(1, "Введите цель"),
   week: z.string().min(1, "Введите неделю"),
   deadlineDate: z.date({ required_error: "Выберите дедлайн" }),
+  assigneeId: z.string(),
   status: z.string().min(1),
 });
+
+const UNASSIGNED = "none";
 
 export type TaskFormValues = z.infer<typeof taskFormSchema>;
 
@@ -57,6 +60,7 @@ export function TaskDialog({
   open,
   onOpenChange,
   departments,
+  assignableUsers,
   lockDepartment,
   task,
   onSubmit,
@@ -65,6 +69,7 @@ export function TaskDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
   departments: Department[];
+  assignableUsers: UserPublic[];
   lockDepartment?: boolean;
   task: TaskWithDepartment | null;
   onSubmit: (values: TaskFormValues) => void;
@@ -78,6 +83,7 @@ export function TaskDialog({
       goal: "",
       week: "",
       deadlineDate: undefined,
+      assigneeId: UNASSIGNED,
       status: "Запланировано",
     },
   });
@@ -93,6 +99,7 @@ export function TaskDialog({
               week: task.week,
               deadlineDate:
                 parseIsoDate(task.deadlineDate) ?? undefined,
+              assigneeId: task.assigneeId ? String(task.assigneeId) : UNASSIGNED,
               status: task.status,
             }
           : {
@@ -101,6 +108,7 @@ export function TaskDialog({
               goal: "",
               week: "",
               deadlineDate: undefined,
+              assigneeId: UNASSIGNED,
               status: "Запланировано",
             }
       );
@@ -219,6 +227,31 @@ export function TaskDialog({
                 )}
               />
             </div>
+            <FormField
+              control={form.control}
+              name="assigneeId"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Исполнитель</FormLabel>
+                  <Select onValueChange={field.onChange} value={field.value}>
+                    <FormControl>
+                      <SelectTrigger data-testid="select-assignee">
+                        <SelectValue />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      <SelectItem value={UNASSIGNED}>Не назначен</SelectItem>
+                      {assignableUsers.map((u) => (
+                        <SelectItem key={u.id} value={String(u.id)}>
+                          {u.username}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
             <FormField
               control={form.control}
               name="status"

@@ -1,7 +1,7 @@
 import type { Request, Response, NextFunction } from "express";
 import crypto from "node:crypto";
 
-type SessionInfo = {
+export type SessionInfo = {
   userId: number;
   username: string;
   role: string;

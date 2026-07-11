@@ -139,7 +139,13 @@ export class DatabaseStorage implements IStorage {
     const rows = db.select().from(tasks).all();
     const depts = await this.getDepartments();
     const deptMap = new Map(depts.map((d) => [d.id, d]));
-    return rows.map((t) => ({ ...t, department: deptMap.get(t.departmentId)! }));
+    const userList = db.select().from(users).all();
+    const userMap = new Map(userList.map((u) => [u.id, toPublicUser(u)]));
+    return rows.map((t) => ({
+      ...t,
+      department: deptMap.get(t.departmentId)!,
+      assignee: t.assigneeId ? userMap.get(t.assigneeId) ?? null : null,
+    }));
   }
 
   async createTask(task: InsertTask): Promise<Task> {

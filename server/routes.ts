@@ -3,7 +3,7 @@ import { createServer } from "node:http";
 import type { Server } from "node:http";
 import { storage, hashPassword, verifyPassword, toPublicUser } from "./storage";
 import { seedDatabase, migrateLegacyPasswords, backfillDeadlineDates } from "./seed";
-import { createToken, destroyToken, requireAuth, requireAdmin } from "./auth";
+import { createToken, destroyToken, requireAuth, requireAdmin, type SessionInfo } from "./auth";
 import { insertTaskSchema, updateTaskSchema, ROLES } from "@shared/schema";
 import { parseIsoDate, formatRuDate } from "@shared/ru-date";
 import { z } from "zod";
@@ -245,6 +245,31 @@ export async function registerRoutes(
     res.status(204).end();
   });
 
+  // Users assignable to tasks: admins see everyone, members see only their
+  // own department's users.
+  app.get("/api/assignable-users", requireAuth, async (req, res) => {
+    const users = await storage.getUsers();
+    const scoped =
+      req.session!.role === "admin"
+        ? users
+        : users.filter((u) => u.departmentId === req.session!.departmentId);
+    res.json(scoped.map(toPublicUser));
+  });
+
+  // Returns an error string if the assignee is not allowed, else null.
+  async function checkAssignee(
+    assigneeId: number | null | undefined,
+    session: SessionInfo
+  ): Promise<string | null> {
+    if (assigneeId === undefined || assigneeId === null) return null;
+    const assignee = await storage.getUser(assigneeId);
+    if (!assignee) return "Исполнитель не найден";
+    if (session.role !== "admin" && assignee.departmentId !== session.departmentId) {
+      return "Можно назначать только сотрудников своего отдела";
+    }
+    return null;
+  }
+
   // --- Tasks (scoped by department for non-admins) ---
   app.get("/api/tasks", requireAuth, async (req, res) => {
     const tasks = await storage.getTasks();
@@ -265,6 +290,8 @@ export async function registerRoutes(
         return res.status(403).json({ message: "Можно создавать задачи только в своём отделе" });
       }
     }
+    const assigneeError = await checkAssignee(parsed.data.assigneeId, req.session!);
+    if (assigneeError) return res.status(400).json({ message: assigneeError });
     const task = await storage.createTask(syncDeadline(parsed.data));
     res.status(201).json(task);
   });
@@ -287,6 +314,8 @@ export async function registerRoutes(
         return res.status(403).json({ message: "Нельзя переносить задачу в другой отдел" });
       }
     }
+    const assigneeError = await checkAssignee(parsed.data.assigneeId, req.session!);
+    if (assigneeError) return res.status(400).json({ message: assigneeError });
     const task = await storage.updateTask(id, syncDeadline(parsed.data));
     if (!task) {
       return res.status(404).json({ message: "Задача не найдена" });

@@ -40,7 +40,7 @@ import {
 } from "lucide-react";
 import { STATUSES } from "@shared/schema";
 import { toIsoDate, daysOverdueFromIso, formatRuDate, parseIsoDate } from "@shared/ru-date";
-import type { Department, TaskWithDepartment } from "@shared/schema";
+import type { Department, TaskWithDepartment, UserPublic } from "@shared/schema";
 
 const STATUS_COLUMNS: { status: (typeof STATUSES)[number]; label: string }[] = [
   { status: "Запланировано", label: "Запланировано" },
@@ -70,6 +70,10 @@ export default function Board() {
     queryKey: ["/api/tasks"],
   });
 
+  const { data: assignableUsers = [] } = useQuery<UserPublic[]>({
+    queryKey: ["/api/assignable-users"],
+  });
+
   const createMutation = useMutation({
     mutationFn: async (values: TaskFormValues) => {
       const res = await apiRequest("POST", "/api/tasks", {
@@ -79,6 +83,7 @@ export default function Board() {
         week: values.week,
         deadline: formatRuDate(values.deadlineDate),
         deadlineDate: toIsoDate(values.deadlineDate),
+        assigneeId: values.assigneeId === "none" ? null : Number(values.assigneeId),
         status: values.status,
       });
       return res.json();
@@ -99,6 +104,9 @@ export default function Board() {
       }
       if (values.deadlineDate !== undefined) {
         payload.deadlineDate = toIsoDate(values.deadlineDate);
+      }
+      if (values.assigneeId !== undefined) {
+        payload.assigneeId = values.assigneeId === "none" ? null : Number(values.assigneeId);
       }
       const res = await apiRequest("PATCH", `/api/tasks/${id}`, payload);
       return res.json();
@@ -365,6 +373,7 @@ export default function Board() {
           if (!open) setEditingTask(null);
         }}
         departments={isAdmin ? departments : departments.filter((d) => d.id === user?.departmentId)}
+        assignableUsers={assignableUsers}
         lockDepartment={!isAdmin}
         task={editingTask}
         onSubmit={handleSubmit}
@@ -420,6 +429,12 @@ function StatCard({
       </div>
     </Card>
   );
+}
+
+function initials(name: string): string {
+  const parts = name.trim().split(/\s+/);
+  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+  return name.slice(0, 2).toUpperCase();
 }
 
 function DeadlineBadge({ task }: { task: TaskWithDepartment }) {
@@ -505,6 +520,15 @@ function TaskCard({
           </Badge>
           <DeadlineBadge task={task} />
         </div>
+        {task.assignee && (
+          <span
+            className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/15 text-[10px] font-semibold text-primary"
+            title={task.assignee.username}
+            data-testid={`assignee-${task.id}`}
+          >
+            {initials(task.assignee.username)}
+          </span>
+        )}
       </div>
       <Select value={task.status} onValueChange={onStatusChange}>
         <SelectTrigger
