@@ -11,6 +11,7 @@ import { ChangePasswordDialog } from "@/components/change-password-dialog";
 import NotFound from "@/pages/not-found";
 import Login from "@/pages/login";
 import Board from "@/pages/board";
+import TaskPage from "@/pages/task";
 import Users from "@/pages/users";
 import Departments from "@/pages/departments";
 import Analytics from "@/pages/analytics";
@@ -52,6 +53,9 @@ function AppRouter() {
       </Route>
       <Route path="/">
         <ProtectedRoute component={Board} />
+      </Route>
+      <Route path="/tasks/:id">
+        <ProtectedRoute component={TaskPage} />
       </Route>
       <Route path="/archive">
         <ProtectedRoute component={Archive} />

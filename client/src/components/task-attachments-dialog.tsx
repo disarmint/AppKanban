@@ -21,15 +21,7 @@ function formatSize(bytes: number): string {
   return `${(kb / 1024).toFixed(1)} МБ`;
 }
 
-export function TaskAttachmentsDialog({
-  task,
-  open,
-  onOpenChange,
-}: {
-  task: TaskWithDepartment | null;
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-}) {
+export function TaskAttachmentsPanel({ task }: { task: TaskWithDepartment | null }) {
   const { user } = useAuth();
   const { toast } = useToast();
   const fileRef = useRef<HTMLInputElement>(null);
@@ -38,7 +30,7 @@ export function TaskAttachmentsDialog({
 
   const { data: attachments = [], isLoading } = useQuery<TaskAttachment[]>({
     queryKey: ["/api/tasks", taskId, "attachments"],
-    enabled: open && taskId !== undefined,
+    enabled: taskId !== undefined,
   });
 
   const invalidate = () => {
@@ -88,76 +80,91 @@ export function TaskAttachmentsDialog({
   }
 
   return (
+    <div className="space-y-3">
+      <div className="max-h-[45vh] overflow-y-auto space-y-2 pr-1">
+        {isLoading && <Loader2 className="h-4 w-4 animate-spin" />}
+        {!isLoading && attachments.length === 0 && (
+          <p className="text-sm text-muted-foreground text-center py-4">Пока нет вложений</p>
+        )}
+        {attachments.map((a) => {
+          const canDelete = user?.role === "admin" || a.uploadedBy === user?.id;
+          return (
+            <div
+              key={a.id}
+              className="flex items-center gap-2 rounded-md border p-2"
+              data-testid={`attachment-${a.id}`}
+            >
+              <Paperclip className="h-4 w-4 shrink-0 text-muted-foreground" />
+              <div className="min-w-0 flex-1">
+                <p className="text-sm truncate" title={a.originalName}>
+                  {a.originalName}
+                </p>
+                <p className="text-[10px] text-muted-foreground">{formatSize(a.size)}</p>
+              </div>
+              <button
+                onClick={() => handleDownload(a)}
+                className="p-1 rounded hover-elevate"
+                aria-label="Скачать"
+                data-testid={`button-download-${a.id}`}
+              >
+                <Download className="h-4 w-4" />
+              </button>
+              {canDelete && (
+                <button
+                  onClick={() => deleteMutation.mutate(a.id)}
+                  className="p-1 rounded hover-elevate text-destructive"
+                  aria-label="Удалить вложение"
+                  data-testid={`button-delete-attachment-${a.id}`}
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      <input
+        ref={fileRef}
+        type="file"
+        className="hidden"
+        data-testid="input-file"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (file) void handleUpload(file);
+        }}
+      />
+      <Button
+        type="button"
+        onClick={() => fileRef.current?.click()}
+        disabled={uploading}
+        className="w-full"
+        data-testid="button-upload"
+      >
+        {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+        Загрузить файл (макс. 10 МБ)
+      </Button>
+    </div>
+  );
+}
+
+export function TaskAttachmentsDialog({
+  task,
+  open,
+  onOpenChange,
+}: {
+  task: TaskWithDepartment | null;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md" data-testid="dialog-attachments">
         <DialogHeader>
           <DialogTitle>Вложения</DialogTitle>
           <DialogDescription className="truncate">{task?.title}</DialogDescription>
         </DialogHeader>
-
-        <div className="max-h-[45vh] overflow-y-auto space-y-2 pr-1">
-          {isLoading && <Loader2 className="h-4 w-4 animate-spin" />}
-          {!isLoading && attachments.length === 0 && (
-            <p className="text-sm text-muted-foreground text-center py-4">Пока нет вложений</p>
-          )}
-          {attachments.map((a) => {
-            const canDelete = user?.role === "admin" || a.uploadedBy === user?.id;
-            return (
-              <div
-                key={a.id}
-                className="flex items-center gap-2 rounded-md border p-2"
-                data-testid={`attachment-${a.id}`}
-              >
-                <Paperclip className="h-4 w-4 shrink-0 text-muted-foreground" />
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm truncate" title={a.originalName}>
-                    {a.originalName}
-                  </p>
-                  <p className="text-[10px] text-muted-foreground">{formatSize(a.size)}</p>
-                </div>
-                <button
-                  onClick={() => handleDownload(a)}
-                  className="p-1 rounded hover-elevate"
-                  aria-label="Скачать"
-                  data-testid={`button-download-${a.id}`}
-                >
-                  <Download className="h-4 w-4" />
-                </button>
-                {canDelete && (
-                  <button
-                    onClick={() => deleteMutation.mutate(a.id)}
-                    className="p-1 rounded hover-elevate text-destructive"
-                    aria-label="Удалить вложение"
-                    data-testid={`button-delete-attachment-${a.id}`}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
-                )}
-              </div>
-            );
-          })}
-        </div>
-
-        <input
-          ref={fileRef}
-          type="file"
-          className="hidden"
-          data-testid="input-file"
-          onChange={(e) => {
-            const file = e.target.files?.[0];
-            if (file) void handleUpload(file);
-          }}
-        />
-        <Button
-          type="button"
-          onClick={() => fileRef.current?.click()}
-          disabled={uploading}
-          className="w-full"
-          data-testid="button-upload"
-        >
-          {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-          Загрузить файл (макс. 10 МБ)
-        </Button>
+        {open && <TaskAttachmentsPanel task={task} />}
       </DialogContent>
     </Dialog>
   );

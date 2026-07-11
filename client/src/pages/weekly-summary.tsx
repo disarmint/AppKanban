@@ -174,7 +174,15 @@ export default function WeeklySummary() {
                         const d = parseIsoDate(o.deadlineDate);
                         return (
                           <tr key={o.taskId} className="border-b last:border-0" data-testid={`row-overdue-${o.taskId}`}>
-                            <td className="p-2">{o.title}</td>
+                            <td className="p-2">
+                              <Link
+                                href={`/tasks/${o.taskId}`}
+                                className="text-primary hover:underline"
+                                data-testid={`link-overdue-task-${o.taskId}`}
+                              >
+                                {o.title}
+                              </Link>
+                            </td>
                             <td className="p-2">
                               <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
                                 {o.departmentName}

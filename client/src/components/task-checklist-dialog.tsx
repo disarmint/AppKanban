@@ -15,22 +15,14 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Loader2, Trash2, Plus } from "lucide-react";
 import type { ChecklistItem, TaskWithDepartment } from "@shared/schema";
 
-export function TaskChecklistDialog({
-  task,
-  open,
-  onOpenChange,
-}: {
-  task: TaskWithDepartment | null;
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-}) {
+export function TaskChecklistPanel({ task }: { task: TaskWithDepartment | null }) {
   const { toast } = useToast();
   const [text, setText] = useState("");
   const taskId = task?.id;
 
   const { data: items = [], isLoading } = useQuery<ChecklistItem[]>({
     queryKey: ["/api/tasks", taskId, "checklist"],
-    enabled: open && taskId !== undefined,
+    enabled: taskId !== undefined,
   });
 
   const invalidate = () => {
@@ -66,74 +58,85 @@ export function TaskChecklistDialog({
     onError: () => toast({ title: "Не удалось удалить пункт", variant: "destructive" }),
   });
 
-  const done = items.filter((i) => i.done).length;
+  return (
+    <div className="space-y-3">
+      <div className="max-h-[45vh] overflow-y-auto space-y-1.5 pr-1">
+        {isLoading && <Loader2 className="h-4 w-4 animate-spin" />}
+        {!isLoading && items.length === 0 && (
+          <p className="text-sm text-muted-foreground text-center py-4">Пунктов пока нет</p>
+        )}
+        {items.map((item) => (
+          <div
+            key={item.id}
+            className="flex items-center gap-2 rounded-md border p-2"
+            data-testid={`checklist-item-${item.id}`}
+          >
+            <Checkbox
+              checked={item.done}
+              onCheckedChange={(checked) =>
+                toggleMutation.mutate({ id: item.id, done: checked === true })
+              }
+              data-testid={`checkbox-${item.id}`}
+            />
+            <span
+              className={`flex-1 text-sm ${item.done ? "line-through text-muted-foreground" : ""}`}
+            >
+              {item.text}
+            </span>
+            <button
+              onClick={() => deleteMutation.mutate(item.id)}
+              className="text-destructive p-0.5 rounded hover-elevate"
+              aria-label="Удалить пункт"
+              data-testid={`button-delete-checklist-${item.id}`}
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        ))}
+      </div>
 
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (text.trim()) addMutation.mutate();
+        }}
+        className="flex gap-2"
+      >
+        <Input
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          placeholder="Новый пункт..."
+          data-testid="input-checklist"
+        />
+        <Button
+          type="submit"
+          disabled={!text.trim() || addMutation.isPending}
+          data-testid="button-add-checklist"
+        >
+          <Plus className="h-4 w-4" />
+        </Button>
+      </form>
+    </div>
+  );
+}
+
+export function TaskChecklistDialog({
+  task,
+  open,
+  onOpenChange,
+}: {
+  task: TaskWithDepartment | null;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md" data-testid="dialog-checklist">
         <DialogHeader>
-          <DialogTitle>
-            Чек-лист {items.length > 0 && <span className="text-muted-foreground">· {done}/{items.length}</span>}
-          </DialogTitle>
+          <DialogTitle>Чек-лист</DialogTitle>
           <DialogDescription className="truncate">{task?.title}</DialogDescription>
         </DialogHeader>
-
-        <div className="max-h-[45vh] overflow-y-auto space-y-1.5 pr-1">
-          {isLoading && <Loader2 className="h-4 w-4 animate-spin" />}
-          {!isLoading && items.length === 0 && (
-            <p className="text-sm text-muted-foreground text-center py-4">Пунктов пока нет</p>
-          )}
-          {items.map((item) => (
-            <div
-              key={item.id}
-              className="flex items-center gap-2 rounded-md border p-2"
-              data-testid={`checklist-item-${item.id}`}
-            >
-              <Checkbox
-                checked={item.done}
-                onCheckedChange={(checked) =>
-                  toggleMutation.mutate({ id: item.id, done: checked === true })
-                }
-                data-testid={`checkbox-${item.id}`}
-              />
-              <span
-                className={`flex-1 text-sm ${item.done ? "line-through text-muted-foreground" : ""}`}
-              >
-                {item.text}
-              </span>
-              <button
-                onClick={() => deleteMutation.mutate(item.id)}
-                className="text-destructive p-0.5 rounded hover-elevate"
-                aria-label="Удалить пункт"
-                data-testid={`button-delete-checklist-${item.id}`}
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-              </button>
-            </div>
-          ))}
-        </div>
-
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (text.trim()) addMutation.mutate();
-          }}
-          className="flex gap-2"
-        >
-          <Input
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            placeholder="Новый пункт..."
-            data-testid="input-checklist"
-          />
-          <Button
-            type="submit"
-            disabled={!text.trim() || addMutation.isPending}
-            data-testid="button-add-checklist"
-          >
-            <Plus className="h-4 w-4" />
-          </Button>
-        </form>
+        {open && <TaskChecklistPanel task={task} />}
       </DialogContent>
     </Dialog>
   );

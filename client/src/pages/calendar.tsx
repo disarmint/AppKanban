@@ -1,9 +1,6 @@
 import { useMemo, useState } from "react";
-import { Link } from "wouter";
-import { useQuery, useMutation } from "@tanstack/react-query";
-import { apiRequest, queryClient } from "@/lib/queryClient";
-import { useAuth } from "@/lib/auth-context";
-import { useToast } from "@/hooks/use-toast";
+import { Link, useLocation } from "wouter";
+import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -11,10 +8,9 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { TaskDialog, type TaskFormValues } from "@/components/task-dialog";
 import { ArrowLeft, CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
-import { toIsoDate, formatRuDate } from "@shared/ru-date";
-import type { Department, TaskWithDepartment, UserPublic } from "@shared/schema";
+import { toIsoDate } from "@shared/ru-date";
+import type { TaskWithDepartment } from "@shared/schema";
 
 const MONTHS = [
   "Январь", "Февраль", "Март", "Апрель", "Май", "Июнь",
@@ -28,44 +24,14 @@ function mondayIndex(d: Date): number {
 }
 
 export default function CalendarPage() {
-  const { user } = useAuth();
-  const { toast } = useToast();
-  const isAdmin = user?.role === "admin";
+  const [, navigate] = useLocation();
 
   const today = new Date();
   const [year, setYear] = useState(today.getFullYear());
   const [month, setMonth] = useState(today.getMonth()); // 0-based
-  const [editingTask, setEditingTask] = useState<TaskWithDepartment | null>(null);
-  const [dialogOpen, setDialogOpen] = useState(false);
 
   const { data: tasks = [], isLoading } = useQuery<TaskWithDepartment[]>({
     queryKey: ["/api/tasks"],
-  });
-  const { data: departments = [] } = useQuery<Department[]>({
-    queryKey: ["/api/departments"],
-  });
-  const { data: assignableUsers = [] } = useQuery<UserPublic[]>({
-    queryKey: ["/api/assignable-users"],
-  });
-
-  const updateMutation = useMutation({
-    mutationFn: async ({ id, values }: { id: number; values: Partial<TaskFormValues> }) => {
-      const payload: Record<string, unknown> = { ...values };
-      if (values.departmentId !== undefined) payload.departmentId = Number(values.departmentId);
-      if (values.deadlineDate !== undefined) payload.deadlineDate = toIsoDate(values.deadlineDate);
-      if (values.deadlineDate !== undefined) payload.deadline = formatRuDate(values.deadlineDate);
-      if (values.assigneeId !== undefined) {
-        payload.assigneeId = values.assigneeId === "none" ? null : Number(values.assigneeId);
-      }
-      const res = await apiRequest("PATCH", `/api/tasks/${id}`, payload);
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/tasks"] });
-      setDialogOpen(false);
-      setEditingTask(null);
-    },
-    onError: () => toast({ title: "Не удалось обновить задачу", variant: "destructive" }),
   });
 
   // Map ISO date "YYYY-MM-DD" -> tasks whose deadline lands that day.
@@ -106,12 +72,7 @@ export default function CalendarPage() {
   }
 
   function openTask(t: TaskWithDepartment) {
-    setEditingTask(t);
-    setDialogOpen(true);
-  }
-
-  function handleSubmit(values: TaskFormValues) {
-    if (editingTask) updateMutation.mutate({ id: editingTask.id, values });
+    navigate(`/tasks/${t.id}`);
   }
 
   const isoFor = (day: number) =>
@@ -220,20 +181,6 @@ export default function CalendarPage() {
           </div>
         )}
       </main>
-
-      <TaskDialog
-        open={dialogOpen}
-        onOpenChange={(open) => {
-          setDialogOpen(open);
-          if (!open) setEditingTask(null);
-        }}
-        departments={isAdmin ? departments : departments.filter((d) => d.id === user?.departmentId)}
-        assignableUsers={assignableUsers}
-        lockDepartment={!isAdmin}
-        task={editingTask}
-        onSubmit={handleSubmit}
-        isSubmitting={updateMutation.isPending}
-      />
     </div>
   );
 }

@@ -70,7 +70,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { STATUSES, PRIORITIES } from "@shared/schema";
 import { toIsoDate, daysOverdueFromIso, formatRuDate, parseIsoDate } from "@shared/ru-date";
 import type { Department, TaskWithDepartment, UserPublic, Label, AppConfig, Priority } from "@shared/schema";
@@ -94,11 +94,11 @@ export default function Board() {
   const { user, logout } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const { toast } = useToast();
+  const [, navigate] = useLocation();
 
   const [search, setSearch] = useState("");
   const [activeDepartments, setActiveDepartments] = useState<Set<number>>(new Set());
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [editingTask, setEditingTask] = useState<TaskWithDepartment | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<TaskWithDepartment | null>(null);
   const [commentsTask, setCommentsTask] = useState<TaskWithDepartment | null>(null);
   const [attachmentsTask, setAttachmentsTask] = useState<TaskWithDepartment | null>(null);
@@ -178,8 +178,6 @@ export default function Board() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/tasks"] });
-      setDialogOpen(false);
-      setEditingTask(null);
     },
     onError: () => toast({ title: "Не удалось обновить задачу", variant: "destructive" }),
   });
@@ -260,21 +258,15 @@ export default function Board() {
   const activeDragTask = activeDragId !== null ? tasks.find((t) => t.id === activeDragId) ?? null : null;
 
   function openCreate() {
-    setEditingTask(null);
     setDialogOpen(true);
   }
 
-  function openEdit(task: TaskWithDepartment) {
-    setEditingTask(task);
-    setDialogOpen(true);
+  function openTask(task: TaskWithDepartment) {
+    navigate(`/tasks/${task.id}`);
   }
 
   function handleSubmit(values: TaskFormValues) {
-    if (editingTask) {
-      updateMutation.mutate({ id: editingTask.id, values });
-    } else {
-      createMutation.mutate(values);
-    }
+    createMutation.mutate(values);
   }
 
   const isLoading = loadingDepartments || loadingTasks;
@@ -298,12 +290,7 @@ export default function Board() {
           </div>
           <div className="flex items-center gap-1 sm:gap-2 shrink-0">
             {isAdmin && <AdminNav />}
-            <NotificationBell
-              onOpenTask={(taskId) => {
-                const t = tasks.find((x) => x.id === taskId);
-                if (t) openEdit(t);
-              }}
-            />
+            <NotificationBell onOpenTask={(taskId) => navigate(`/tasks/${taskId}`)} />
             <Link href="/calendar">
               <Button variant="ghost" size="icon" aria-label="Календарь" data-testid="link-calendar">
                 <CalendarDays className="h-4 w-4" />
@@ -504,7 +491,7 @@ export default function Board() {
                           key={task.id}
                           task={task}
                           staleDays={config?.staleDays ?? 0}
-                          onEdit={() => openEdit(task)}
+                          onOpen={() => openTask(task)}
                           onDelete={() => setDeleteTarget(task)}
                           onComments={() => setCommentsTask(task)}
                           onAttachments={() => setAttachmentsTask(task)}
@@ -531,16 +518,13 @@ export default function Board() {
 
       <TaskDialog
         open={dialogOpen}
-        onOpenChange={(open) => {
-          setDialogOpen(open);
-          if (!open) setEditingTask(null);
-        }}
+        onOpenChange={setDialogOpen}
         departments={isAdmin ? departments : departments.filter((d) => d.id === user?.departmentId)}
         assignableUsers={assignableUsers}
         lockDepartment={!isAdmin}
-        task={editingTask}
+        task={null}
         onSubmit={handleSubmit}
-        isSubmitting={createMutation.isPending || updateMutation.isPending}
+        isSubmitting={createMutation.isPending}
       />
 
       <TaskCommentsDialog
@@ -671,7 +655,7 @@ function BoardColumn({
 }
 
 type TaskCardHandlers = {
-  onEdit: () => void;
+  onOpen: () => void;
   onDelete: () => void;
   onComments: () => void;
   onAttachments: () => void;
@@ -681,7 +665,7 @@ type TaskCardHandlers = {
 };
 
 const NOOP_HANDLERS: TaskCardHandlers = {
-  onEdit: () => {},
+  onOpen: () => {},
   onDelete: () => {},
   onComments: () => {},
   onAttachments: () => {},
@@ -707,7 +691,7 @@ function TaskCard(props: { task: TaskWithDepartment; staleDays: number } & TaskC
 function TaskCardView({
   task,
   staleDays,
-  onEdit,
+  onOpen,
   onDelete,
   onComments,
   onAttachments,
@@ -727,6 +711,12 @@ function TaskCardView({
   // Interactive controls stop pointer propagation so tapping them never starts
   // a drag — the status dropdown stays a keyboard/click-accessible alternative.
   const stop = { onPointerDown: (e: React.PointerEvent) => e.stopPropagation() };
+  // Plain wrapper containers additionally swallow clicks so the card's own click
+  // handler (navigate to the task page) doesn't fire for their inner controls.
+  const stopAll = {
+    onPointerDown: (e: React.PointerEvent) => e.stopPropagation(),
+    onClick: (e: React.MouseEvent) => e.stopPropagation(),
+  };
   // A non-final task whose status hasn't moved in longer than the configured
   // threshold is flagged as "stale".
   const staleFor =
@@ -743,7 +733,8 @@ function TaskCardView({
     <Card
       ref={dragRef}
       {...(dragProps ?? {})}
-      className={`group p-3 cursor-grab active:cursor-grabbing border-l-[3px] touch-none ${
+      onClick={onOpen}
+      className={`group p-3 cursor-pointer border-l-[3px] touch-none ${
         isDragging ? "opacity-40" : ""
       }`}
       style={{ borderLeftColor: task.department?.color }}
@@ -787,7 +778,7 @@ function TaskCardView({
             </TooltipProvider>
           )}
         </div>
-        <div className="flex items-center gap-0.5" {...stop}>
+        <div className="flex items-center gap-0.5" {...stopAll}>
           <button
             onClick={onComments}
             className="relative p-1 rounded hover-elevate"
@@ -829,9 +820,9 @@ function TaskCardView({
             <Tag className="h-3.5 w-3.5" />
           </button>
           <button
-            onClick={onEdit}
+            onClick={onOpen}
             className="p-1 rounded hover-elevate opacity-0 group-hover:opacity-100 transition-opacity"
-            aria-label="Редактировать"
+            aria-label="Открыть задачу"
             data-testid={`button-edit-${task.id}`}
           >
             <Pencil className="h-3.5 w-3.5" />
@@ -882,8 +873,11 @@ function TaskCardView({
             </span>
           )}
           <button
-            onClick={onChecklist}
             {...stop}
+            onClick={(e) => {
+              e.stopPropagation();
+              onChecklist();
+            }}
             className="inline-flex items-center gap-1 rounded-md bg-muted px-1.5 py-0 text-[10px] font-medium text-muted-foreground hover-elevate"
             data-testid={`checklist-count-${task.id}`}
           >
@@ -901,22 +895,24 @@ function TaskCardView({
           </span>
         )}
       </div>
-      <Select value={task.status} onValueChange={onStatusChange}>
-        <SelectTrigger
-          {...stop}
-          className="mt-2 h-7 text-xs"
-          data-testid={`select-status-${task.id}`}
-        >
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          {STATUSES.map((s) => (
-            <SelectItem key={s} value={s} className="text-xs">
-              {s}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+      <div {...stopAll}>
+        <Select value={task.status} onValueChange={onStatusChange}>
+          <SelectTrigger
+            {...stop}
+            className="mt-2 h-7 text-xs"
+            data-testid={`select-status-${task.id}`}
+          >
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {STATUSES.map((s) => (
+              <SelectItem key={s} value={s} className="text-xs">
+                {s}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
     </Card>
   );
 }
