@@ -14,6 +14,7 @@ import Users from "@/pages/users";
 import Departments from "@/pages/departments";
 import Analytics from "@/pages/analytics";
 import Archive from "@/pages/archive";
+import CalendarPage from "@/pages/calendar";
 import Settings from "@/pages/settings";
 import Reports from "@/pages/reports";
 
@@ -45,6 +46,9 @@ function AppRouter() {
       </Route>
       <Route path="/archive">
         <ProtectedRoute component={Archive} />
+      </Route>
+      <Route path="/calendar">
+        <ProtectedRoute component={CalendarPage} />
       </Route>
       <Route path="/users">
         <AdminRoute component={Users} />

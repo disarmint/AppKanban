@@ -62,6 +62,7 @@ import {
   AlertTriangle,
   Paperclip,
   Clock,
+  CalendarDays,
 } from "lucide-react";
 import {
   Tooltip,
@@ -282,6 +283,11 @@ export default function Board() {
                 if (t) openEdit(t);
               }}
             />
+            <Link href="/calendar">
+              <Button variant="ghost" size="icon" aria-label="Календарь" data-testid="link-calendar">
+                <CalendarDays className="h-4 w-4" />
+              </Button>
+            </Link>
             <Link href="/archive">
               <Button variant="ghost" size="icon" aria-label="Архив" data-testid="link-archive">
                 <Archive className="h-4 w-4" />
