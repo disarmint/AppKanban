@@ -41,6 +41,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { TaskDialog, type TaskFormValues } from "@/components/task-dialog";
 import { TaskCommentsDialog } from "@/components/task-comments-dialog";
+import { TaskAttachmentsDialog } from "@/components/task-attachments-dialog";
 import { TaskChecklistDialog } from "@/components/task-checklist-dialog";
 import { TaskLabelsDialog } from "@/components/task-labels-dialog";
 import { AdminNav } from "@/components/admin-nav";
@@ -59,6 +60,7 @@ import {
   Tag,
   Archive,
   AlertTriangle,
+  Paperclip,
 } from "lucide-react";
 import { Link } from "wouter";
 import { STATUSES } from "@shared/schema";
@@ -82,6 +84,7 @@ export default function Board() {
   const [editingTask, setEditingTask] = useState<TaskWithDepartment | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<TaskWithDepartment | null>(null);
   const [commentsTask, setCommentsTask] = useState<TaskWithDepartment | null>(null);
+  const [attachmentsTask, setAttachmentsTask] = useState<TaskWithDepartment | null>(null);
   const [checklistTask, setChecklistTask] = useState<TaskWithDepartment | null>(null);
   const [labelsTask, setLabelsTask] = useState<TaskWithDepartment | null>(null);
   const [activeLabels, setActiveLabels] = useState<Set<number>>(new Set());
@@ -448,6 +451,7 @@ export default function Board() {
                           onEdit={() => openEdit(task)}
                           onDelete={() => setDeleteTarget(task)}
                           onComments={() => setCommentsTask(task)}
+                          onAttachments={() => setAttachmentsTask(task)}
                           onChecklist={() => setChecklistTask(task)}
                           onLabels={() => setLabelsTask(task)}
                           onStatusChange={(status) =>
@@ -487,6 +491,12 @@ export default function Board() {
         task={commentsTask}
         open={!!commentsTask}
         onOpenChange={(open) => !open && setCommentsTask(null)}
+      />
+
+      <TaskAttachmentsDialog
+        task={attachmentsTask}
+        open={!!attachmentsTask}
+        onOpenChange={(open) => !open && setAttachmentsTask(null)}
       />
 
       <TaskChecklistDialog
@@ -608,6 +618,7 @@ type TaskCardHandlers = {
   onEdit: () => void;
   onDelete: () => void;
   onComments: () => void;
+  onAttachments: () => void;
   onChecklist: () => void;
   onLabels: () => void;
   onStatusChange: (status: string) => void;
@@ -617,6 +628,7 @@ const NOOP_HANDLERS: TaskCardHandlers = {
   onEdit: () => {},
   onDelete: () => {},
   onComments: () => {},
+  onAttachments: () => {},
   onChecklist: () => {},
   onLabels: () => {},
   onStatusChange: () => {},
@@ -641,6 +653,7 @@ function TaskCardView({
   onEdit,
   onDelete,
   onComments,
+  onAttachments,
   onChecklist,
   onLabels,
   onStatusChange,
@@ -689,6 +702,22 @@ function TaskCardView({
                 data-testid={`comment-count-${task.id}`}
               >
                 {task.commentCount}
+              </span>
+            )}
+          </button>
+          <button
+            onClick={onAttachments}
+            className="relative p-1 rounded hover-elevate"
+            aria-label="Вложения"
+            data-testid={`button-attachments-${task.id}`}
+          >
+            <Paperclip className="h-3.5 w-3.5" />
+            {task.attachmentCount > 0 && (
+              <span
+                className="absolute -top-1 -right-1 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-primary px-1 text-[9px] font-semibold text-primary-foreground"
+                data-testid={`attachment-count-${task.id}`}
+              >
+                {task.attachmentCount}
               </span>
             )}
           </button>

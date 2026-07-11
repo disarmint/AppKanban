@@ -19,6 +19,29 @@ import {
 import { parseIsoDate, formatRuDate } from "@shared/ru-date";
 import { z } from "zod";
 import ExcelJS from "exceljs";
+import multer from "multer";
+import crypto from "node:crypto";
+import path from "node:path";
+import fs from "node:fs";
+
+// Uploaded files live on disk in ./uploads (relative to cwd, alongside
+// data.db). The directory is created at import time so the first upload can't
+// race a missing folder.
+const UPLOAD_DIR = path.join(process.cwd(), "uploads");
+fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+const MAX_UPLOAD_BYTES = 10 * 1024 * 1024; // 10 MB
+const MAX_ATTACHMENTS_PER_TASK = 20;
+
+const upload = multer({
+  storage: multer.diskStorage({
+    destination: (_req, _file, cb) => cb(null, UPLOAD_DIR),
+    filename: (_req, file, cb) => {
+      const ext = path.extname(file.originalname).slice(0, 20);
+      cb(null, `${crypto.randomUUID()}${ext}`);
+    },
+  }),
+  limits: { fileSize: MAX_UPLOAD_BYTES },
+});
 
 // Completed tasks whose completedAt falls in [from, to] (inclusive day
 // bounds). `to` is pushed to end-of-day so a same-day range still matches.
@@ -447,6 +470,98 @@ export async function registerRoutes(
 
   app.post("/api/notifications/read-all", requireAuth, async (req, res) => {
     await storage.markAllNotificationsRead(req.session!.userId);
+    res.status(204).end();
+  });
+
+  // --- Task attachments (files on disk in ./uploads, metadata in the DB) ---
+  app.get("/api/tasks/:id/attachments", requireAuth, async (req, res) => {
+    const taskId = Number(req.params.id);
+    if (Number.isNaN(taskId)) return res.status(400).json({ message: "Некорректный id" });
+    if (!(await canAccessTask(taskId, req.session!))) {
+      return res.status(403).json({ message: "Нет доступа к задаче" });
+    }
+    res.json(await storage.getAttachments(taskId));
+  });
+
+  app.post(
+    "/api/tasks/:id/attachments",
+    requireAuth,
+    (req, res, next) => {
+      upload.single("file")(req, res, (err) => {
+        if (err) {
+          const msg =
+            err instanceof multer.MulterError && err.code === "LIMIT_FILE_SIZE"
+              ? "Файл слишком большой (макс. 10 МБ)"
+              : "Не удалось загрузить файл";
+          return res.status(400).json({ message: msg });
+        }
+        next();
+      });
+    },
+    async (req, res) => {
+      const taskId = Number(req.params.id);
+      const file = req.file;
+      const cleanup = () => {
+        if (file) fs.rm(path.join(UPLOAD_DIR, file.filename), () => {});
+      };
+      if (Number.isNaN(taskId)) {
+        cleanup();
+        return res.status(400).json({ message: "Некорректный id" });
+      }
+      if (!file) return res.status(400).json({ message: "Файл не выбран" });
+      if (!(await canAccessTask(taskId, req.session!))) {
+        cleanup();
+        return res.status(403).json({ message: "Нет доступа к задаче" });
+      }
+      const existing = await storage.getAttachments(taskId);
+      if (existing.length >= MAX_ATTACHMENTS_PER_TASK) {
+        cleanup();
+        return res
+          .status(400)
+          .json({ message: `Слишком много вложений (макс. ${MAX_ATTACHMENTS_PER_TASK})` });
+      }
+      const originalName = Buffer.from(file.originalname, "latin1").toString("utf8");
+      const attachment = await storage.createAttachment({
+        taskId,
+        filename: file.filename,
+        originalName,
+        mimeType: file.mimetype,
+        size: file.size,
+        uploadedBy: req.session!.userId,
+      });
+      res.status(201).json(attachment);
+    }
+  );
+
+  app.get("/api/attachments/:id/download", requireAuth, async (req, res) => {
+    const id = Number(req.params.id);
+    if (Number.isNaN(id)) return res.status(400).json({ message: "Некорректный id" });
+    const attachment = await storage.getAttachment(id);
+    if (!attachment) return res.status(404).json({ message: "Вложение не найдено" });
+    if (!(await canAccessTask(attachment.taskId, req.session!))) {
+      return res.status(403).json({ message: "Нет доступа к вложению" });
+    }
+    const filePath = path.join(UPLOAD_DIR, attachment.filename);
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({ message: "Файл не найден на диске" });
+    }
+    res.download(filePath, attachment.originalName);
+  });
+
+  app.delete("/api/attachments/:id", requireAuth, async (req, res) => {
+    const id = Number(req.params.id);
+    if (Number.isNaN(id)) return res.status(400).json({ message: "Некорректный id" });
+    const attachment = await storage.getAttachment(id);
+    if (!attachment) return res.status(404).json({ message: "Вложение не найдено" });
+    if (!(await canAccessTask(attachment.taskId, req.session!))) {
+      return res.status(403).json({ message: "Нет доступа к вложению" });
+    }
+    // Only an admin or the original uploader may delete.
+    if (req.session!.role !== "admin" && attachment.uploadedBy !== req.session!.userId) {
+      return res.status(403).json({ message: "Можно удалять только свои вложения" });
+    }
+    await storage.deleteAttachment(id);
+    fs.rm(path.join(UPLOAD_DIR, attachment.filename), () => {});
     res.status(204).end();
   });
 

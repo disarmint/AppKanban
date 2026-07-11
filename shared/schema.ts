@@ -93,6 +93,7 @@ export type TaskWithDepartment = Task & {
   commentCount: number;
   checklistTotal: number;
   checklistDone: number;
+  attachmentCount: number;
   labels: Label[];
 };
 
@@ -172,6 +173,25 @@ export const updateLabelSchema = insertLabelSchema.partial().refine(
 );
 
 export type Label = typeof labels.$inferSelect;
+
+// Files uploaded against a task. The binary lives on disk in uploads/; this
+// row holds the metadata. `filename` is the unique on-disk name.
+export const taskAttachments = sqliteTable("task_attachments", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  taskId: integer("task_id")
+    .notNull()
+    .references(() => tasks.id),
+  filename: text("filename").notNull(),
+  originalName: text("original_name").notNull(),
+  mimeType: text("mime_type").notNull(),
+  size: integer("size").notNull(),
+  uploadedBy: integer("uploaded_by")
+    .notNull()
+    .references(() => users.id),
+  createdAt: integer("created_at").notNull(),
+});
+
+export type TaskAttachment = typeof taskAttachments.$inferSelect;
 
 // In-app notifications (no email/push). One row per event addressed to a user.
 export const NOTIFICATION_TYPES = ["comment", "assignment", "deadline"] as const;

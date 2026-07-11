@@ -57,6 +57,13 @@
       "when": 1783787892806,
       "tag": "0007_add_notifications",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1783788116423,
+      "tag": "0008_add_attachments",
+      "breakpoints": true
     }
   ]
 }

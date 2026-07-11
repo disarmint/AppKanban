@@ -1,4 +1,4 @@
-import { users, departments, tasks, taskComments, checklistItems, labels, taskLabels, appSettings, notifications } from "@shared/schema";
+import { users, departments, tasks, taskComments, checklistItems, labels, taskLabels, appSettings, notifications, taskAttachments } from "@shared/schema";
 import type {
   User,
   UserPublic,
@@ -17,6 +17,7 @@ import type {
   AppConfig,
   Notification,
   NotificationType,
+  TaskAttachment,
 } from "@shared/schema";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import Database from "better-sqlite3";
@@ -105,6 +106,18 @@ export interface IStorage {
   deleteLabel(id: number): Promise<boolean>;
   addTaskLabel(taskId: number, labelId: number): Promise<void>;
   removeTaskLabel(taskId: number, labelId: number): Promise<void>;
+
+  getAttachments(taskId: number): Promise<TaskAttachment[]>;
+  getAttachment(id: number): Promise<TaskAttachment | undefined>;
+  createAttachment(data: {
+    taskId: number;
+    filename: string;
+    originalName: string;
+    mimeType: string;
+    size: number;
+    uploadedBy: number;
+  }): Promise<TaskAttachment>;
+  deleteAttachment(id: number): Promise<boolean>;
 
   getNotifications(userId: number): Promise<Notification[]>;
   getNotification(id: number): Promise<Notification | undefined>;
@@ -207,6 +220,11 @@ export class DatabaseStorage implements IStorage {
       arr.push(label);
       labelsByTask.set(link.taskId, arr);
     }
+    const attachmentRows = db.select().from(taskAttachments).all();
+    const attachByTask = new Map<number, number>();
+    for (const a of attachmentRows) {
+      attachByTask.set(a.taskId, (attachByTask.get(a.taskId) ?? 0) + 1);
+    }
     return rows.map((t) => ({
       ...t,
       department: deptMap.get(t.departmentId)!,
@@ -214,6 +232,7 @@ export class DatabaseStorage implements IStorage {
       commentCount: countByTask.get(t.id) ?? 0,
       checklistTotal: checkTotal.get(t.id) ?? 0,
       checklistDone: checkDone.get(t.id) ?? 0,
+      attachmentCount: attachByTask.get(t.id) ?? 0,
       labels: labelsByTask.get(t.id) ?? [],
     }));
   }
@@ -386,8 +405,41 @@ export class DatabaseStorage implements IStorage {
     db.delete(checklistItems).where(eq(checklistItems.taskId, id)).run();
     db.delete(taskLabels).where(eq(taskLabels.taskId, id)).run();
     db.delete(notifications).where(eq(notifications.taskId, id)).run();
+    db.delete(taskAttachments).where(eq(taskAttachments.taskId, id)).run();
     const result = db.delete(tasks).where(eq(tasks.id, id)).run();
     return result.changes > 0;
+  }
+
+  async getAttachments(taskId: number): Promise<TaskAttachment[]> {
+    return db
+      .select()
+      .from(taskAttachments)
+      .where(eq(taskAttachments.taskId, taskId))
+      .all()
+      .sort((a, b) => a.createdAt - b.createdAt);
+  }
+
+  async getAttachment(id: number): Promise<TaskAttachment | undefined> {
+    return db.select().from(taskAttachments).where(eq(taskAttachments.id, id)).get();
+  }
+
+  async createAttachment(data: {
+    taskId: number;
+    filename: string;
+    originalName: string;
+    mimeType: string;
+    size: number;
+    uploadedBy: number;
+  }): Promise<TaskAttachment> {
+    return db
+      .insert(taskAttachments)
+      .values({ ...data, createdAt: Date.now() })
+      .returning()
+      .get();
+  }
+
+  async deleteAttachment(id: number): Promise<boolean> {
+    return db.delete(taskAttachments).where(eq(taskAttachments.id, id)).run().changes > 0;
   }
 
   async getNotifications(userId: number): Promise<Notification[]> {
