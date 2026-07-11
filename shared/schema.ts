@@ -85,6 +85,8 @@ export type TaskWithDepartment = Task & {
   department: Department;
   assignee: UserPublic | null;
   commentCount: number;
+  checklistTotal: number;
+  checklistDone: number;
 };
 
 export const taskComments = sqliteTable("task_comments", {
@@ -105,3 +107,28 @@ export const insertCommentSchema = z.object({
 
 export type TaskComment = typeof taskComments.$inferSelect;
 export type CommentWithAuthor = TaskComment & { author: UserPublic | null };
+
+export const checklistItems = sqliteTable("checklist_items", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  taskId: integer("task_id")
+    .notNull()
+    .references(() => tasks.id),
+  text: text("text").notNull(),
+  done: integer("done", { mode: "boolean" }).notNull().default(false),
+  createdAt: integer("created_at").notNull(),
+});
+
+export const insertChecklistItemSchema = z.object({
+  text: z.string().min(1, "Введите пункт").max(500),
+});
+
+export const updateChecklistItemSchema = z
+  .object({
+    text: z.string().min(1).max(500).optional(),
+    done: z.boolean().optional(),
+  })
+  .refine((d) => d.text !== undefined || d.done !== undefined, {
+    message: "Нечего обновлять",
+  });
+
+export type ChecklistItem = typeof checklistItems.$inferSelect;

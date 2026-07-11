@@ -4,7 +4,14 @@ import type { Server } from "node:http";
 import { storage, hashPassword, verifyPassword, toPublicUser } from "./storage";
 import { seedDatabase, migrateLegacyPasswords, backfillDeadlineDates } from "./seed";
 import { createToken, destroyToken, requireAuth, requireAdmin, type SessionInfo } from "./auth";
-import { insertTaskSchema, updateTaskSchema, insertCommentSchema, ROLES } from "@shared/schema";
+import {
+  insertTaskSchema,
+  updateTaskSchema,
+  insertCommentSchema,
+  insertChecklistItemSchema,
+  updateChecklistItemSchema,
+  ROLES,
+} from "@shared/schema";
 import { parseIsoDate, formatRuDate } from "@shared/ru-date";
 import { z } from "zod";
 
@@ -381,6 +388,54 @@ export async function registerRoutes(
       return res.status(403).json({ message: "Можно удалять только свои комментарии" });
     }
     await storage.deleteComment(id);
+    res.status(204).end();
+  });
+
+  // --- Checklist items ---
+  app.get("/api/tasks/:id/checklist", requireAuth, async (req, res) => {
+    const taskId = Number(req.params.id);
+    if (Number.isNaN(taskId)) return res.status(400).json({ message: "Некорректный id" });
+    if (!(await canAccessTask(taskId, req.session!))) {
+      return res.status(403).json({ message: "Нет доступа к задаче" });
+    }
+    res.json(await storage.getChecklist(taskId));
+  });
+
+  app.post("/api/tasks/:id/checklist", requireAuth, async (req, res) => {
+    const taskId = Number(req.params.id);
+    if (Number.isNaN(taskId)) return res.status(400).json({ message: "Некорректный id" });
+    if (!(await canAccessTask(taskId, req.session!))) {
+      return res.status(403).json({ message: "Нет доступа к задаче" });
+    }
+    const parsed = insertChecklistItemSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: "Введите пункт" });
+    const item = await storage.createChecklistItem(taskId, parsed.data.text);
+    res.status(201).json(item);
+  });
+
+  app.patch("/api/checklist/:id", requireAuth, async (req, res) => {
+    const id = Number(req.params.id);
+    if (Number.isNaN(id)) return res.status(400).json({ message: "Некорректный id" });
+    const item = await storage.getChecklistItem(id);
+    if (!item) return res.status(404).json({ message: "Пункт не найден" });
+    if (!(await canAccessTask(item.taskId, req.session!))) {
+      return res.status(403).json({ message: "Нет доступа к задаче" });
+    }
+    const parsed = updateChecklistItemSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: "Некорректные данные" });
+    const updated = await storage.updateChecklistItem(id, parsed.data);
+    res.json(updated);
+  });
+
+  app.delete("/api/checklist/:id", requireAuth, async (req, res) => {
+    const id = Number(req.params.id);
+    if (Number.isNaN(id)) return res.status(400).json({ message: "Некорректный id" });
+    const item = await storage.getChecklistItem(id);
+    if (!item) return res.status(404).json({ message: "Пункт не найден" });
+    if (!(await canAccessTask(item.taskId, req.session!))) {
+      return res.status(403).json({ message: "Нет доступа к задаче" });
+    }
+    await storage.deleteChecklistItem(id);
     res.status(204).end();
   });
 

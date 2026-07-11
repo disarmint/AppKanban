@@ -28,6 +28,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { TaskDialog, type TaskFormValues } from "@/components/task-dialog";
 import { TaskCommentsDialog } from "@/components/task-comments-dialog";
+import { TaskChecklistDialog } from "@/components/task-checklist-dialog";
 import { AdminNav } from "@/components/admin-nav";
 import {
   LayoutGrid,
@@ -39,6 +40,7 @@ import {
   Trash2,
   Search,
   MessageSquare,
+  ListChecks,
 } from "lucide-react";
 import { STATUSES } from "@shared/schema";
 import { toIsoDate, daysOverdueFromIso, formatRuDate, parseIsoDate } from "@shared/ru-date";
@@ -61,6 +63,7 @@ export default function Board() {
   const [editingTask, setEditingTask] = useState<TaskWithDepartment | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<TaskWithDepartment | null>(null);
   const [commentsTask, setCommentsTask] = useState<TaskWithDepartment | null>(null);
+  const [checklistTask, setChecklistTask] = useState<TaskWithDepartment | null>(null);
   const [dragOverStatus, setDragOverStatus] = useState<string | null>(null);
 
   const isAdmin = user?.role === "admin";
@@ -357,6 +360,7 @@ export default function Board() {
                         onEdit={() => openEdit(task)}
                         onDelete={() => setDeleteTarget(task)}
                         onComments={() => setCommentsTask(task)}
+                        onChecklist={() => setChecklistTask(task)}
                         onStatusChange={(status) =>
                           updateMutation.mutate({ id: task.id, values: { status } })
                         }
@@ -388,6 +392,12 @@ export default function Board() {
         task={commentsTask}
         open={!!commentsTask}
         onOpenChange={(open) => !open && setCommentsTask(null)}
+      />
+
+      <TaskChecklistDialog
+        task={checklistTask}
+        open={!!checklistTask}
+        onOpenChange={(open) => !open && setChecklistTask(null)}
       />
 
       <AlertDialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
@@ -475,12 +485,14 @@ function TaskCard({
   onEdit,
   onDelete,
   onComments,
+  onChecklist,
   onStatusChange,
 }: {
   task: TaskWithDepartment;
   onEdit: () => void;
   onDelete: () => void;
   onComments: () => void;
+  onChecklist: () => void;
   onStatusChange: (status: string) => void;
 }) {
   return (
@@ -547,6 +559,14 @@ function TaskCard({
             {task.week}
           </Badge>
           <DeadlineBadge task={task} />
+          <button
+            onClick={onChecklist}
+            className="inline-flex items-center gap-1 rounded-md bg-muted px-1.5 py-0 text-[10px] font-medium text-muted-foreground hover-elevate"
+            data-testid={`checklist-count-${task.id}`}
+          >
+            <ListChecks className="h-3 w-3" />
+            {task.checklistTotal > 0 ? `${task.checklistDone}/${task.checklistTotal}` : "+"}
+          </button>
         </div>
         {task.assignee && (
           <span

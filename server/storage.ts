@@ -1,4 +1,4 @@
-import { users, departments, tasks, taskComments } from "@shared/schema";
+import { users, departments, tasks, taskComments, checklistItems } from "@shared/schema";
 import type {
   User,
   UserPublic,
@@ -12,6 +12,7 @@ import type {
   TaskWithDepartment,
   TaskComment,
   CommentWithAuthor,
+  ChecklistItem,
 } from "@shared/schema";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import Database from "better-sqlite3";
@@ -81,6 +82,12 @@ export interface IStorage {
   getComment(id: number): Promise<TaskComment | undefined>;
   createComment(taskId: number, userId: number, body: string): Promise<TaskComment>;
   deleteComment(id: number): Promise<boolean>;
+
+  getChecklist(taskId: number): Promise<ChecklistItem[]>;
+  getChecklistItem(id: number): Promise<ChecklistItem | undefined>;
+  createChecklistItem(taskId: number, text: string): Promise<ChecklistItem>;
+  updateChecklistItem(id: number, data: { text?: string; done?: boolean }): Promise<ChecklistItem | undefined>;
+  deleteChecklistItem(id: number): Promise<boolean>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -153,12 +160,53 @@ export class DatabaseStorage implements IStorage {
     for (const c of commentRows) {
       countByTask.set(c.taskId, (countByTask.get(c.taskId) ?? 0) + 1);
     }
+    const checkRows = db.select().from(checklistItems).all();
+    const checkTotal = new Map<number, number>();
+    const checkDone = new Map<number, number>();
+    for (const it of checkRows) {
+      checkTotal.set(it.taskId, (checkTotal.get(it.taskId) ?? 0) + 1);
+      if (it.done) checkDone.set(it.taskId, (checkDone.get(it.taskId) ?? 0) + 1);
+    }
     return rows.map((t) => ({
       ...t,
       department: deptMap.get(t.departmentId)!,
       assignee: t.assigneeId ? userMap.get(t.assigneeId) ?? null : null,
       commentCount: countByTask.get(t.id) ?? 0,
+      checklistTotal: checkTotal.get(t.id) ?? 0,
+      checklistDone: checkDone.get(t.id) ?? 0,
     }));
+  }
+
+  async getChecklist(taskId: number): Promise<ChecklistItem[]> {
+    return db
+      .select()
+      .from(checklistItems)
+      .where(eq(checklistItems.taskId, taskId))
+      .all()
+      .sort((a, b) => a.createdAt - b.createdAt);
+  }
+
+  async getChecklistItem(id: number): Promise<ChecklistItem | undefined> {
+    return db.select().from(checklistItems).where(eq(checklistItems.id, id)).get();
+  }
+
+  async createChecklistItem(taskId: number, text: string): Promise<ChecklistItem> {
+    return db
+      .insert(checklistItems)
+      .values({ taskId, text, done: false, createdAt: Date.now() })
+      .returning()
+      .get();
+  }
+
+  async updateChecklistItem(
+    id: number,
+    data: { text?: string; done?: boolean }
+  ): Promise<ChecklistItem | undefined> {
+    return db.update(checklistItems).set(data).where(eq(checklistItems.id, id)).returning().get();
+  }
+
+  async deleteChecklistItem(id: number): Promise<boolean> {
+    return db.delete(checklistItems).where(eq(checklistItems.id, id)).run().changes > 0;
   }
 
   async getComments(taskId: number): Promise<CommentWithAuthor[]> {
@@ -199,6 +247,7 @@ export class DatabaseStorage implements IStorage {
 
   async deleteTask(id: number): Promise<boolean> {
     db.delete(taskComments).where(eq(taskComments.taskId, id)).run();
+    db.delete(checklistItems).where(eq(checklistItems.taskId, id)).run();
     const result = db.delete(tasks).where(eq(tasks.id, id)).run();
     return result.changes > 0;
   }
