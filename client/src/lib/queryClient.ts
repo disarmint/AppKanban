@@ -2,10 +2,32 @@ import { QueryClient, QueryFunction } from "@tanstack/react-query";
 
 const API_BASE = "__PORT_5000__".startsWith("__") ? "" : "__PORT_5000__";
 
-let authToken: string | null = null;
+const TOKEN_STORAGE_KEY = "kanban_auth_token";
+
+function readStoredToken(): string | null {
+  try {
+    return localStorage.getItem(TOKEN_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+// Initialize from localStorage so a page reload keeps the user authenticated
+// while the server process (in-memory session Map) is still alive.
+let authToken: string | null = readStoredToken();
+
+export function getAuthToken(): string | null {
+  return authToken;
+}
 
 export function setAuthToken(token: string | null) {
   authToken = token;
+  try {
+    if (token) localStorage.setItem(TOKEN_STORAGE_KEY, token);
+    else localStorage.removeItem(TOKEN_STORAGE_KEY);
+  } catch {
+    // localStorage may be unavailable; in-memory token still works for the session
+  }
 }
 
 async function throwIfResNotOk(res: Response) {

@@ -1,3 +1,4 @@
+import { Loader2 } from "lucide-react";
 import { Switch, Route, Router, Redirect } from "wouter";
 import { useHashLocation } from "wouter/use-hash-location";
 import { queryClient } from "./lib/queryClient";
@@ -33,7 +34,14 @@ function AdminRoute({ component: Component }: { component: () => JSX.Element }) 
 }
 
 function AppRouter() {
-  const { isAuthenticated, user } = useAuth();
+  const { isAuthenticated, isLoading, user } = useAuth();
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background" data-testid="auth-loading">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
   if (isAuthenticated && user?.mustChangePassword) {
     return <ChangePasswordDialog />;
   }
