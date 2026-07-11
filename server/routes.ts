@@ -10,6 +10,8 @@ import {
   insertCommentSchema,
   insertChecklistItemSchema,
   updateChecklistItemSchema,
+  insertLabelSchema,
+  updateLabelSchema,
   ROLES,
 } from "@shared/schema";
 import { parseIsoDate, formatRuDate } from "@shared/ru-date";
@@ -436,6 +438,69 @@ export async function registerRoutes(
       return res.status(403).json({ message: "Нет доступа к задаче" });
     }
     await storage.deleteChecklistItem(id);
+    res.status(204).end();
+  });
+
+  // --- Labels (read for everyone, CRUD admin-only) ---
+  app.get("/api/labels", requireAuth, async (_req, res) => {
+    res.json(await storage.getLabels());
+  });
+
+  app.post("/api/labels", requireAuth, requireAdmin, async (req, res) => {
+    const parsed = insertLabelSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: "Некорректные данные метки" });
+    const existing = await storage.getLabels();
+    if (existing.some((l) => l.name.toLowerCase() === parsed.data.name.toLowerCase())) {
+      return res.status(409).json({ message: "Метка с таким названием уже существует" });
+    }
+    res.status(201).json(await storage.createLabel(parsed.data.name, parsed.data.color));
+  });
+
+  app.patch("/api/labels/:id", requireAuth, requireAdmin, async (req, res) => {
+    const id = Number(req.params.id);
+    if (Number.isNaN(id)) return res.status(400).json({ message: "Некорректный id" });
+    const parsed = updateLabelSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: "Некорректные данные метки" });
+    const label = await storage.updateLabel(id, parsed.data);
+    if (!label) return res.status(404).json({ message: "Метка не найдена" });
+    res.json(label);
+  });
+
+  app.delete("/api/labels/:id", requireAuth, requireAdmin, async (req, res) => {
+    const id = Number(req.params.id);
+    if (Number.isNaN(id)) return res.status(400).json({ message: "Некорректный id" });
+    const ok = await storage.deleteLabel(id);
+    if (!ok) return res.status(404).json({ message: "Метка не найдена" });
+    res.status(204).end();
+  });
+
+  // Assign / unassign a label to a task (dept-scoped for members).
+  app.post("/api/tasks/:id/labels", requireAuth, async (req, res) => {
+    const taskId = Number(req.params.id);
+    const labelId = Number(req.body?.labelId);
+    if (Number.isNaN(taskId) || Number.isNaN(labelId)) {
+      return res.status(400).json({ message: "Некорректный id" });
+    }
+    if (!(await canAccessTask(taskId, req.session!))) {
+      return res.status(403).json({ message: "Нет доступа к задаче" });
+    }
+    if (!(await storage.getLabel(labelId))) {
+      return res.status(404).json({ message: "Метка не найдена" });
+    }
+    await storage.addTaskLabel(taskId, labelId);
+    res.status(204).end();
+  });
+
+  app.delete("/api/tasks/:id/labels/:labelId", requireAuth, async (req, res) => {
+    const taskId = Number(req.params.id);
+    const labelId = Number(req.params.labelId);
+    if (Number.isNaN(taskId) || Number.isNaN(labelId)) {
+      return res.status(400).json({ message: "Некорректный id" });
+    }
+    if (!(await canAccessTask(taskId, req.session!))) {
+      return res.status(403).json({ message: "Нет доступа к задаче" });
+    }
+    await storage.removeTaskLabel(taskId, labelId);
     res.status(204).end();
   });
 

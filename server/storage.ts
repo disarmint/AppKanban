@@ -1,4 +1,4 @@
-import { users, departments, tasks, taskComments, checklistItems } from "@shared/schema";
+import { users, departments, tasks, taskComments, checklistItems, labels, taskLabels } from "@shared/schema";
 import type {
   User,
   UserPublic,
@@ -13,10 +13,11 @@ import type {
   TaskComment,
   CommentWithAuthor,
   ChecklistItem,
+  Label,
 } from "@shared/schema";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import Database from "better-sqlite3";
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import crypto from "node:crypto";
 import { initDatabase } from "./db-init";
 
@@ -88,6 +89,14 @@ export interface IStorage {
   createChecklistItem(taskId: number, text: string): Promise<ChecklistItem>;
   updateChecklistItem(id: number, data: { text?: string; done?: boolean }): Promise<ChecklistItem | undefined>;
   deleteChecklistItem(id: number): Promise<boolean>;
+
+  getLabels(): Promise<Label[]>;
+  getLabel(id: number): Promise<Label | undefined>;
+  createLabel(name: string, color: string): Promise<Label>;
+  updateLabel(id: number, data: { name?: string; color?: string }): Promise<Label | undefined>;
+  deleteLabel(id: number): Promise<boolean>;
+  addTaskLabel(taskId: number, labelId: number): Promise<void>;
+  removeTaskLabel(taskId: number, labelId: number): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -167,6 +176,17 @@ export class DatabaseStorage implements IStorage {
       checkTotal.set(it.taskId, (checkTotal.get(it.taskId) ?? 0) + 1);
       if (it.done) checkDone.set(it.taskId, (checkDone.get(it.taskId) ?? 0) + 1);
     }
+    const labelRows = db.select().from(labels).all();
+    const labelMap = new Map(labelRows.map((l) => [l.id, l]));
+    const linkRows = db.select().from(taskLabels).all();
+    const labelsByTask = new Map<number, Label[]>();
+    for (const link of linkRows) {
+      const label = labelMap.get(link.labelId);
+      if (!label) continue;
+      const arr = labelsByTask.get(link.taskId) ?? [];
+      arr.push(label);
+      labelsByTask.set(link.taskId, arr);
+    }
     return rows.map((t) => ({
       ...t,
       department: deptMap.get(t.departmentId)!,
@@ -174,7 +194,39 @@ export class DatabaseStorage implements IStorage {
       commentCount: countByTask.get(t.id) ?? 0,
       checklistTotal: checkTotal.get(t.id) ?? 0,
       checklistDone: checkDone.get(t.id) ?? 0,
+      labels: labelsByTask.get(t.id) ?? [],
     }));
+  }
+
+  async getLabels(): Promise<Label[]> {
+    return db.select().from(labels).orderBy(labels.name).all();
+  }
+
+  async getLabel(id: number): Promise<Label | undefined> {
+    return db.select().from(labels).where(eq(labels.id, id)).get();
+  }
+
+  async createLabel(name: string, color: string): Promise<Label> {
+    return db.insert(labels).values({ name, color }).returning().get();
+  }
+
+  async updateLabel(id: number, data: { name?: string; color?: string }): Promise<Label | undefined> {
+    return db.update(labels).set(data).where(eq(labels.id, id)).returning().get();
+  }
+
+  async deleteLabel(id: number): Promise<boolean> {
+    db.delete(taskLabels).where(eq(taskLabels.labelId, id)).run();
+    return db.delete(labels).where(eq(labels.id, id)).run().changes > 0;
+  }
+
+  async addTaskLabel(taskId: number, labelId: number): Promise<void> {
+    db.insert(taskLabels).values({ taskId, labelId }).onConflictDoNothing().run();
+  }
+
+  async removeTaskLabel(taskId: number, labelId: number): Promise<void> {
+    db.delete(taskLabels)
+      .where(and(eq(taskLabels.taskId, taskId), eq(taskLabels.labelId, labelId)))
+      .run();
   }
 
   async getChecklist(taskId: number): Promise<ChecklistItem[]> {
@@ -248,6 +300,7 @@ export class DatabaseStorage implements IStorage {
   async deleteTask(id: number): Promise<boolean> {
     db.delete(taskComments).where(eq(taskComments.taskId, id)).run();
     db.delete(checklistItems).where(eq(checklistItems.taskId, id)).run();
+    db.delete(taskLabels).where(eq(taskLabels.taskId, id)).run();
     const result = db.delete(tasks).where(eq(tasks.id, id)).run();
     return result.changes > 0;
   }

@@ -29,6 +29,7 @@ import {
 import { TaskDialog, type TaskFormValues } from "@/components/task-dialog";
 import { TaskCommentsDialog } from "@/components/task-comments-dialog";
 import { TaskChecklistDialog } from "@/components/task-checklist-dialog";
+import { TaskLabelsDialog } from "@/components/task-labels-dialog";
 import { AdminNav } from "@/components/admin-nav";
 import {
   LayoutGrid,
@@ -41,10 +42,11 @@ import {
   Search,
   MessageSquare,
   ListChecks,
+  Tag,
 } from "lucide-react";
 import { STATUSES } from "@shared/schema";
 import { toIsoDate, daysOverdueFromIso, formatRuDate, parseIsoDate } from "@shared/ru-date";
-import type { Department, TaskWithDepartment, UserPublic } from "@shared/schema";
+import type { Department, TaskWithDepartment, UserPublic, Label } from "@shared/schema";
 
 const STATUS_COLUMNS: { status: (typeof STATUSES)[number]; label: string }[] = [
   { status: "Запланировано", label: "Запланировано" },
@@ -64,6 +66,8 @@ export default function Board() {
   const [deleteTarget, setDeleteTarget] = useState<TaskWithDepartment | null>(null);
   const [commentsTask, setCommentsTask] = useState<TaskWithDepartment | null>(null);
   const [checklistTask, setChecklistTask] = useState<TaskWithDepartment | null>(null);
+  const [labelsTask, setLabelsTask] = useState<TaskWithDepartment | null>(null);
+  const [activeLabels, setActiveLabels] = useState<Set<number>>(new Set());
   const [dragOverStatus, setDragOverStatus] = useState<string | null>(null);
 
   const isAdmin = user?.role === "admin";
@@ -78,6 +82,10 @@ export default function Board() {
 
   const { data: assignableUsers = [] } = useQuery<UserPublic[]>({
     queryKey: ["/api/assignable-users"],
+  });
+
+  const { data: labels = [] } = useQuery<Label[]>({
+    queryKey: ["/api/labels"],
   });
 
   const createMutation = useMutation({
@@ -141,6 +149,7 @@ export default function Board() {
     const q = search.trim().toLowerCase();
     return tasks.filter((t) => {
       if (activeDepartments.size > 0 && !activeDepartments.has(t.departmentId)) return false;
+      if (activeLabels.size > 0 && !t.labels.some((l) => activeLabels.has(l.id))) return false;
       if (!q) return true;
       return (
         t.title.toLowerCase().includes(q) ||
@@ -148,7 +157,7 @@ export default function Board() {
         t.department?.name.toLowerCase().includes(q)
       );
     });
-  }, [tasks, activeDepartments, search]);
+  }, [tasks, activeDepartments, activeLabels, search]);
 
   const stats = useMemo(() => {
     const total = tasks.length;
@@ -161,6 +170,15 @@ export default function Board() {
 
   function toggleDepartment(id: number) {
     setActiveDepartments((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleLabel(id: number) {
+    setActiveLabels((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
@@ -312,6 +330,28 @@ export default function Board() {
           </Button>
         </div>
 
+        {labels.length > 0 && (
+          <div className="flex gap-2 overflow-x-auto" data-testid="label-filter">
+            {labels.map((l) => {
+              const active = activeLabels.has(l.id);
+              return (
+                <button
+                  key={l.id}
+                  onClick={() => toggleLabel(l.id)}
+                  data-testid={`chip-label-${l.id}`}
+                  className={`toggle-elevate shrink-0 inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
+                    active ? "toggle-elevated" : ""
+                  }`}
+                  style={{ borderColor: active ? l.color : "var(--border)", color: active ? l.color : undefined }}
+                >
+                  <span className="h-2 w-2 rounded-full" style={{ backgroundColor: l.color }} />
+                  {l.name}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
         {/* Kanban columns */}
         {isLoading ? (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -361,6 +401,7 @@ export default function Board() {
                         onDelete={() => setDeleteTarget(task)}
                         onComments={() => setCommentsTask(task)}
                         onChecklist={() => setChecklistTask(task)}
+                        onLabels={() => setLabelsTask(task)}
                         onStatusChange={(status) =>
                           updateMutation.mutate({ id: task.id, values: { status } })
                         }
@@ -398,6 +439,12 @@ export default function Board() {
         task={checklistTask}
         open={!!checklistTask}
         onOpenChange={(open) => !open && setChecklistTask(null)}
+      />
+
+      <TaskLabelsDialog
+        task={labelsTask ? tasks.find((t) => t.id === labelsTask.id) ?? labelsTask : null}
+        open={!!labelsTask}
+        onOpenChange={(open) => !open && setLabelsTask(null)}
       />
 
       <AlertDialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
@@ -486,6 +533,7 @@ function TaskCard({
   onDelete,
   onComments,
   onChecklist,
+  onLabels,
   onStatusChange,
 }: {
   task: TaskWithDepartment;
@@ -493,6 +541,7 @@ function TaskCard({
   onDelete: () => void;
   onComments: () => void;
   onChecklist: () => void;
+  onLabels: () => void;
   onStatusChange: (status: string) => void;
 }) {
   return (
@@ -532,6 +581,14 @@ function TaskCard({
             )}
           </button>
           <button
+            onClick={onLabels}
+            className="p-1 rounded hover-elevate"
+            aria-label="Метки"
+            data-testid={`button-labels-${task.id}`}
+          >
+            <Tag className="h-3.5 w-3.5" />
+          </button>
+          <button
             onClick={onEdit}
             className="p-1 rounded hover-elevate opacity-0 group-hover:opacity-100 transition-opacity"
             aria-label="Редактировать"
@@ -553,6 +610,21 @@ function TaskCard({
         {task.title}
       </p>
       <p className="text-xs text-muted-foreground mt-1 leading-snug">{task.goal}</p>
+      {task.labels.length > 0 && (
+        <div className="flex flex-wrap gap-1 mt-2" data-testid={`labels-${task.id}`}>
+          {task.labels.map((l) => (
+            <span
+              key={l.id}
+              className="inline-flex items-center gap-1 rounded-full px-1.5 py-0 text-[10px] font-medium"
+              style={{ backgroundColor: `${l.color}22`, color: l.color }}
+              data-testid={`label-chip-${task.id}-${l.id}`}
+            >
+              <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: l.color }} />
+              {l.name}
+            </span>
+          ))}
+        </div>
+      )}
       <div className="flex items-center justify-between mt-3 gap-2">
         <div className="flex flex-wrap gap-1">
           <Badge variant="secondary" className="text-[10px] px-1.5 py-0">

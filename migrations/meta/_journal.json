@@ -36,6 +36,13 @@
       "when": 1783778384580,
       "tag": "0004_add_checklist",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1783778570614,
+      "tag": "0005_add_labels",
+      "breakpoints": true
     }
   ]
 }

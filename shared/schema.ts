@@ -1,4 +1,4 @@
-import { sqliteTable, text, integer } from "drizzle-orm/sqlite-core";
+import { sqliteTable, text, integer, primaryKey } from "drizzle-orm/sqlite-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -87,6 +87,7 @@ export type TaskWithDepartment = Task & {
   commentCount: number;
   checklistTotal: number;
   checklistDone: number;
+  labels: Label[];
 };
 
 export const taskComments = sqliteTable("task_comments", {
@@ -132,3 +133,36 @@ export const updateChecklistItemSchema = z
   });
 
 export type ChecklistItem = typeof checklistItems.$inferSelect;
+
+export const labels = sqliteTable("labels", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  name: text("name").notNull().unique(),
+  color: text("color").notNull(),
+});
+
+export const taskLabels = sqliteTable(
+  "task_labels",
+  {
+    taskId: integer("task_id")
+      .notNull()
+      .references(() => tasks.id),
+    labelId: integer("label_id")
+      .notNull()
+      .references(() => labels.id),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.taskId, t.labelId] }),
+  })
+);
+
+export const insertLabelSchema = z.object({
+  name: z.string().min(1, "Введите название").max(50),
+  color: z.string().min(1),
+});
+
+export const updateLabelSchema = insertLabelSchema.partial().refine(
+  (d) => d.name !== undefined || d.color !== undefined,
+  { message: "Нечего обновлять" }
+);
+
+export type Label = typeof labels.$inferSelect;
