@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label as FieldLabel } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AdminNav } from "@/components/admin-nav";
-import { ArrowLeft, Settings as SettingsIcon } from "lucide-react";
+import { ArrowLeft, Settings as SettingsIcon, Download, Loader2 } from "lucide-react";
 import { STATUSES } from "@shared/schema";
 import type { AppConfig } from "@shared/schema";
 
@@ -20,6 +20,7 @@ export default function Settings() {
   const [archiveDays, setArchiveDays] = useState("30");
   const [staleDays, setStaleDays] = useState("14");
   const [wip, setWip] = useState<Record<string, string>>({});
+  const [downloading, setDownloading] = useState(false);
 
   useEffect(() => {
     if (!config) return;
@@ -53,6 +54,26 @@ export default function Settings() {
     },
     onError: () => toast({ title: "Не удалось сохранить настройки", variant: "destructive" }),
   });
+
+  async function downloadBackup() {
+    setDownloading(true);
+    try {
+      const res = await apiRequest("GET", "/api/backup");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `kanban-backup-${new Date().toISOString().slice(0, 10)}.db`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch {
+      toast({ title: "Не удалось скачать резервную копию", variant: "destructive" });
+    } finally {
+      setDownloading(false);
+    }
+  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -166,6 +187,24 @@ export default function Settings() {
             >
               Сохранить
             </Button>
+
+            <Card className="p-4 space-y-3">
+              <h2 className="text-sm font-semibold">Резервное копирование</h2>
+              <p className="text-xs text-muted-foreground">
+                Скачайте полную копию базы данных (файл SQLite) на свой компьютер.
+                Автоматическое облачное копирование не настроено — сохраняйте копии
+                самостоятельно и храните их в надёжном месте.
+              </p>
+              <Button
+                variant="outline"
+                onClick={downloadBackup}
+                disabled={downloading}
+                data-testid="button-download-backup"
+              >
+                {downloading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                Скачать резервную копию
+              </Button>
+            </Card>
           </>
         )}
       </main>

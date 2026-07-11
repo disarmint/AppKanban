@@ -25,7 +25,7 @@ import { eq, and, desc } from "drizzle-orm";
 import crypto from "node:crypto";
 import { initDatabase } from "./db-init";
 
-const sqlite = new Database("data.db");
+export const sqlite = new Database("data.db");
 
 // Schema is owned by shared/schema.ts (Drizzle) and materialized into
 // ./migrations. initDatabase applies those migrations (and sets the WAL +

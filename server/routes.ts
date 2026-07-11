@@ -1,7 +1,8 @@
 import type { Express } from "express";
 import { createServer } from "node:http";
 import type { Server } from "node:http";
-import { storage, hashPassword, verifyPassword, toPublicUser } from "./storage";
+import { storage, sqlite, hashPassword, verifyPassword, toPublicUser } from "./storage";
+import os from "node:os";
 import { seedDatabase, migrateLegacyPasswords, backfillDeadlineDates } from "./seed";
 import { createToken, destroyToken, requireAuth, requireAdmin, type SessionInfo } from "./auth";
 import { startCronJobs } from "./cron";
@@ -446,6 +447,25 @@ export async function registerRoutes(
     if (!parsed.success) return res.status(400).json({ message: "Некорректные настройки" });
     const config = await storage.setConfig(parsed.data);
     res.json(config);
+  });
+
+  // --- Backup (admin only): a consistent SQLite snapshot download ---
+  // VACUUM INTO writes a single defragmented file that already folds in the WAL
+  // and skips uncommitted pages, so the download is a clean point-in-time copy
+  // even while the server keeps serving. The temp file is deleted afterwards.
+  app.get("/api/backup", requireAuth, requireAdmin, (_req, res) => {
+    const tmpPath = path.join(os.tmpdir(), `kanban-backup-${crypto.randomUUID()}.db`);
+    try {
+      sqlite.exec(`VACUUM INTO '${tmpPath.replace(/'/g, "''")}'`);
+    } catch (err) {
+      console.error("[backup] VACUUM INTO failed:", err);
+      return res.status(500).json({ message: "Не удалось создать резервную копию" });
+    }
+    const today = new Date().toISOString().slice(0, 10);
+    res.download(tmpPath, `kanban-backup-${today}.db`, (err) => {
+      if (err) console.error("[backup] download failed:", err);
+      fs.rm(tmpPath, () => {});
+    });
   });
 
   // --- Notifications (scoped to the current user; no cross-user access) ---
